@@ -7,6 +7,12 @@ body {
   background: #070707;
 }
 
+button,
+input,
+textarea {
+  font: inherit;
+}
+
 .npb-site {
   --npb-black: #070707;
   --npb-ink: #121212;
@@ -34,6 +40,38 @@ body {
   height: 4px;
   transform-origin: 0 50%;
   background: var(--npb-red);
+}
+
+.cms-open-button {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 140;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  color: white;
+  background: rgba(237, 27, 52, 0.92);
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.32);
+  font-size: 0.82rem;
+  font-weight: 950;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.cms-editable-text {
+  outline: 1px dashed rgba(237, 27, 52, 0.55);
+  outline-offset: 4px;
+  cursor: text;
+}
+
+.cms-editable-text:focus {
+  outline: 2px solid #ed1b34;
+  background: rgba(237, 27, 52, 0.12);
 }
 
 .npb-nav {
@@ -819,5 +857,218 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+.cms-builder {
+  display: grid;
+  grid-template-columns: 390px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #0b0b0b;
+  color: white;
+  font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+}
+
+.cms-sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: 100vh;
+  overflow-y: auto;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: #101010;
+  padding: 18px;
+}
+
+.cms-brand {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cms-brand strong {
+  color: #ed1b34;
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+
+.cms-brand span,
+.cms-muted {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.cms-panel-group {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.cms-panel-group h3 {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.cms-section-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cms-section-list button,
+.cms-actions button,
+.cms-actions a,
+.cms-panel-group > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  color: white;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cms-section-list button.is-active,
+.cms-actions button:first-child {
+  border-color: #ed1b34;
+  background: #ed1b34;
+}
+
+.cms-field {
+  display: grid;
+  gap: 7px;
+}
+
+.cms-field span {
+  color: rgba(255, 255, 255, 0.56);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.cms-field textarea,
+.cms-field input,
+.cms-json {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  color: white;
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.cms-field textarea {
+  min-height: 78px;
+  resize: vertical;
+  padding: 10px;
+  line-height: 1.45;
+}
+
+.cms-field input {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.cms-asset-field img {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #222;
+}
+
+.cms-char-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: 150px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.cms-char-map span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 22px;
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.06);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+}
+
+.cms-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.cms-json {
+  min-height: 220px;
+  padding: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.cms-canvas {
+  min-width: 0;
+  background: #070707;
+}
+
+.cms-canvas-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  background: rgba(7, 7, 7, 0.86);
+  backdrop-filter: blur(14px);
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.cms-canvas .npb-nav {
+  top: 66px;
+}
+
+.cms-canvas .cms-open-button {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .cms-builder {
+    grid-template-columns: 1fr;
+  }
+
+  .cms-sidebar {
+    position: relative;
+    height: auto;
+  }
+
+  .cms-canvas .npb-nav {
+    top: 12px;
   }
 }
