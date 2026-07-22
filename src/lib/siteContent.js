@@ -274,10 +274,8 @@ export function buildElementStyle(content, path, editable = false) {
   // a vertical drag grows scaleY, so text/images grow instead of just re-padding.
   const tx = Number(override.x) || 0;
   const ty = Number(override.y) || 0;
-  const sx = Number(override.scaleX) || 1;
-  const sy = Number(override.scaleY) || 1;
-  if (tx || ty || sx !== 1 || sy !== 1) {
-    style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+  if (tx || ty) {
+    style.transform = `translate(${tx}px, ${ty}px)`;
     style.transformOrigin = "top left";
   }
 
@@ -311,7 +309,8 @@ export function buildElementStyle(content, path, editable = false) {
     style.display = override.display || "inline-block";
   }
 
-  if (override.h) {
+  // Clip only images (object-fit crop); text must reflow, never be clipped.
+  if (override.h && override.objectFit) {
     style.overflow = "hidden";
   }
 
@@ -663,7 +662,7 @@ export function addCanvasElement(content, sectionId, type = "text") {
   if (!Array.isArray(section.order)) section.order = [];
   section.items[eid] =
     type === "image"
-      ? { type: "image", value: media("def10c275a38472b55e20fa60a3998ac.png") }
+      ? { type: "image", value: "" }
       : { type: "text", value: "New text" };
   section.order = [...section.order, eid];
   // Seed a starting position so fresh elements don't all stack at 0,0.
@@ -704,7 +703,7 @@ export function addFreeItem(content, sectionId, type = "text") {
   if (!next.freeItems[sectionId]) next.freeItems[sectionId] = {};
   next.freeItems[sectionId][eid] =
     type === "image"
-      ? { type: "image", value: media("def10c275a38472b55e20fa60a3998ac.png") }
+      ? { type: "image", value: "" }
       : { type: "text", value: "New text" };
   // Seed a starting position so fresh elements don't all stack at 0,0.
   const count = Object.keys(next.freeItems[sectionId]).length;

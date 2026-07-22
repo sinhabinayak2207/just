@@ -76,8 +76,6 @@ export function ElementStyleControls({ override, onDesign, onReset, path }) {
         <label><span>Y</span><input type="number" value={num("y")} onChange={(e) => setN("y", e.target.value)} /></label>
         <label><span>W</span><input type="number" value={num("w")} onChange={(e) => setN("w", e.target.value)} /></label>
         <label><span>H</span><input type="number" value={num("h")} onChange={(e) => setN("h", e.target.value)} /></label>
-        <label><span>Scale X</span><input type="number" step="0.1" value={num("scaleX")} onChange={(e) => setN("scaleX", e.target.value)} /></label>
-        <label><span>Scale Y</span><input type="number" step="0.1" value={num("scaleY")} onChange={(e) => setN("scaleY", e.target.value)} /></label>
         <label><span>Z</span><input type="number" value={num("zIndex")} onChange={(e) => setN("zIndex", e.target.value)} /></label>
         <label><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={num("opacity")} onChange={(e) => setN("opacity", e.target.value)} /></label>
       </div>
@@ -193,13 +191,15 @@ function EditableFrame({
   // While dragging, mirror the live transform (move → translate, resize →
   // per-axis scale) over the persisted values so the element tracks the cursor.
   if (live) {
-    const ox = Number(override.x) || 0;
-    const oy = Number(override.y) || 0;
-    const osx = Number(override.scaleX) || 1;
-    const osy = Number(override.scaleY) || 1;
-    if (live.x != null) style.transform = `translate(${live.x}px, ${live.y}px) scale(${osx}, ${osy})`;
-    else style.transform = `translate(${ox}px, ${oy}px) scale(${live.sx}, ${live.sy})`;
-    style.transformOrigin = "top left";
+    if (live.x != null) {
+      style.transform = `translate(${live.x}px, ${live.y}px)`;
+      style.transformOrigin = "top left";
+    } else {
+      // Resize sets real width/height so text reflows on a wider box and the
+      // selection chrome (chip / handles / toolbar) never scales with it.
+      style.width = `${live.w}px`;
+      style.height = `${live.h}px`;
+    }
   }
 
   const round2 = (v) => Math.round(v * 100) / 100;
@@ -227,8 +227,8 @@ function EditableFrame({
     const dx = event.clientX - d.sx;
     const dy = event.clientY - d.sy;
     if (d.mode === "move") setLive({ x: d.ox + dx, y: d.oy + dy });
-    // Per-axis scale: horizontal drag → scaleX, vertical drag → scaleY.
-    else setLive({ sx: Math.max(0.2, d.osx + dx / d.ew), sy: Math.max(0.2, d.osy + dy / d.eh) });
+    // Resize: horizontal drag → width (text reflows), vertical drag → height.
+    else setLive({ w: Math.max(40, d.ew + dx), h: Math.max(24, d.eh + dy) });
   };
   const up = (event) => {
     const d = drag.current;
@@ -237,7 +237,7 @@ function EditableFrame({
     const dx = event.clientX - d.sx;
     const dy = event.clientY - d.sy;
     if (d.mode === "move") onMove(path, { x: Math.round(d.ox + dx), y: Math.round(d.oy + dy) });
-    else onResize(path, { scaleX: round2(Math.max(0.2, d.osx + dx / d.ew)), scaleY: round2(Math.max(0.2, d.osy + dy / d.eh)) });
+    else onResize(path, { w: Math.round(Math.max(40, d.ew + dx)), h: Math.round(Math.max(24, d.eh + dy)) });
     setLive(null);
   };
 
@@ -359,21 +359,22 @@ function EditableText({ path, content, editable, onChange = () => {}, as = "span
 
 function EditableImage({ path, content, editable, className = "", alt = "", block = false, ...frame }) {
   if (getElementOverride(content, path).hidden) return null; // hidden cleanly (no broken-image box)
-  const image = (
-    <img
-      src={String(getByPath(content, path) || "")}
-      alt={alt}
-      className={className}
-      data-cms-path={path}
-      style={!editable ? buildElementStyle(content, path) : undefined}
-    />
-  );
+  const src = String(getByPath(content, path) || "");
 
-  if (!editable) return image;
+  if (!editable) {
+    if (!src) return null; // empty image → nothing on the public site (no broken box)
+    return <img src={src} alt={alt} className={className} data-cms-path={path} style={buildElementStyle(content, path)} />;
+  }
+
+  const inner = src ? (
+    <img src={src} alt={alt} className={className} data-cms-path={path} />
+  ) : (
+    <span className="cms-img-placeholder">＋ Add image — upload in the inspector</span>
+  );
 
   return (
     <EditableFrame path={path} content={content} editable={editable} block={block} {...frame}>
-      {image}
+      {inner}
     </EditableFrame>
   );
 }
