@@ -167,7 +167,9 @@ function EditableFrame({
   label,
   frameClassName = "",
   keepPosition = false,
+  scale = 1,
 }) {
+  const sc = scale || 1;
   const selected = editable && selectedPath === path;
   const ref = useRef(null);
   const drag = useRef(null);
@@ -227,8 +229,8 @@ function EditableFrame({
   const move = (event) => {
     const d = drag.current;
     if (!d) return;
-    const dx = event.clientX - d.sx;
-    const dy = event.clientY - d.sy;
+    const dx = (event.clientX - d.sx) / sc;
+    const dy = (event.clientY - d.sy) / sc;
     if (d.mode === "move") setLive({ x: d.ox + dx, y: d.oy + dy });
     // Resize: horizontal drag → width (text reflows), vertical drag → height.
     else setLive({ w: Math.max(40, d.ew + dx), h: Math.max(24, d.eh + dy) });
@@ -237,8 +239,8 @@ function EditableFrame({
     const d = drag.current;
     if (!d) return;
     drag.current = null;
-    const dx = event.clientX - d.sx;
-    const dy = event.clientY - d.sy;
+    const dx = (event.clientX - d.sx) / sc;
+    const dy = (event.clientY - d.sy) / sc;
     if (d.mode === "move") onMove(path, { x: Math.round(d.ox + dx), y: Math.round(d.oy + dy) });
     else onResize(path, { w: Math.round(Math.max(40, d.ew + dx)), h: Math.round(Math.max(24, d.eh + dy)) });
     setLive(null);
@@ -485,8 +487,13 @@ export default function LandingSections({
   onAddCanvasElement = () => {},
   onRemoveCanvasElement = () => {},
   onRemoveFreeItem = () => {},
+  scale = 1,
 }) {
-  const editorProps = { selectedPath, onSelect, onMove, onResize, onDesign, onReset };
+  // `scale` is the factor by which the canvas is visually shrunk to fit beside the
+  // sidebar (the site is rendered at full 100vw so vw-based fonts match the live
+  // preview, then scaled down). Drag deltas are in on-screen px, so they must be
+  // divided by `scale` to become real content-space px.
+  const editorProps = { selectedPath, onSelect, onMove, onResize, onDesign, onReset, scale };
   // SectionFrame renders the per-section free-element overlay, so it needs the
   // element editor props + text change + remove handler too.
   const sectionApi = { editable, onSelectSection, onSectionResize, onChange, onRemoveFreeItem, ...editorProps };
@@ -598,13 +605,14 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, o
     drag.current = { sy: event.clientY, base: Number(secO.minHeight) || Math.round(ref.current?.offsetHeight || 400) };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
+  const secScale = editorProps.scale || 1;
   const moveResize = (event) => {
     if (!drag.current) return;
-    setLiveH(Math.max(120, drag.current.base + (event.clientY - drag.current.sy)));
+    setLiveH(Math.max(120, drag.current.base + (event.clientY - drag.current.sy) / secScale));
   };
   const endResize = (event) => {
     if (!drag.current) return;
-    const next = Math.max(120, drag.current.base + (event.clientY - drag.current.sy));
+    const next = Math.max(120, drag.current.base + (event.clientY - drag.current.sy) / secScale);
     drag.current = null;
     setLiveH(null);
     onSectionResize(sid, { minHeight: Math.round(next) });

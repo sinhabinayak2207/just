@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -63,6 +63,41 @@ const overlayElType = (content, path) => {
 export default function SiteBuilderEditor() {
   const [content, setContent] = useState(() => loadContent());
   const [activeSection, setActiveSection] = useState("hero");
+
+  // ── WYSIWYG canvas scaling ─────────────────────────────────────────────
+  // The live site uses `vw`-based font sizes (e.g. clamp(3.1rem, 5.8vw, 5.8rem)).
+  // If we render the site into the canvas at its natural width — which is narrower
+  // than the browser because the sidebar eats ~380px — those vw fonts stay sized
+  // to the FULL viewport and look oversized/word-wrapped compared to the preview.
+  // Fix: render the site at the real 100vw width, then visually scale it down to
+  // fit the canvas. Now vw fonts are proportional to the full width (== preview)
+  // and simply scaled to fit. Drag deltas are divided by this scale downstream.
+  const canvasRef = useRef(null);
+  const frameRef = useRef(null);
+  const [canvasScale, setCanvasScale] = useState(1);
+  const [frameH, setFrameH] = useState(0);
+  useEffect(() => {
+    const el = canvasRef.current;
+    const frame = frameRef.current;
+    if (!el || !frame) return undefined;
+    const recompute = () => {
+      const vw = window.innerWidth || 1440;
+      // 44 = the .cms-canvas-scroll left+right padding (22px each) the frame lives in.
+      const cw = Math.max(320, (el.clientWidth || vw) - 44);
+      const s = Math.min(1, cw / vw);
+      setCanvasScale(s);
+      setFrameH((frame.scrollHeight || 0) * s);
+    };
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(el);
+    ro.observe(frame);
+    window.addEventListener("resize", recompute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
+  }, [content]);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(loadContent(), null, 2));
   const [adminToken, setAdminToken] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -536,13 +571,30 @@ export default function SiteBuilderEditor() {
           </details>
         </aside>
 
-        <section className="cms-canvas">
+        <section className="cms-canvas" ref={canvasRef}>
           <div className="cms-canvas-scroll">
-            <div className="cms-canvas-frame">
-              <LandingSections
-                content={content}
-                editable
-                onChange={updateField}
+            {/* Outer holds the SCALED height so vertical scrolling is exact; the
+                frame renders at real 100vw and is scaled to fit (see canvasScale). */}
+            <div className="cms-canvas-frame-outer" style={{ height: frameH || undefined }}>
+              <div
+                ref={frameRef}
+                className="cms-canvas-frame"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100vw",
+                  maxWidth: "none",
+                  margin: 0,
+                  transform: `scale(${canvasScale})`,
+                  transformOrigin: "top left",
+                }}
+              >
+                <LandingSections
+                  content={content}
+                  editable
+                  scale={canvasScale}
+                  onChange={updateField}
                 showCmsButton={false}
                 showHeader
                 selectedPath={selectedPath}
@@ -556,7 +608,8 @@ export default function SiteBuilderEditor() {
                 onAddCanvasElement={addCanvasEl}
                 onRemoveCanvasElement={removeCanvasEl}
                 onRemoveFreeItem={removeFreeEl}
-              />
+                />
+              </div>
             </div>
           </div>
 

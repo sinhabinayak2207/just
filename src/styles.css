@@ -1989,6 +1989,15 @@ select {
   padding: 22px;
 }
 
+/* Wraps the scaled canvas frame. Its inline height is the SCALED site height so
+   the scroll container scrolls exactly, while the frame inside is absolutely
+   positioned + rendered at real 100vw and transform-scaled to fit. */
+.cms-canvas-frame-outer {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+}
+
 .cms-canvas-frame {
   max-width: 1180px;
   margin: 0 auto;
