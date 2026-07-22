@@ -1,6 +1,45 @@
 export const STORAGE_KEY = "nirav_site_content_v1";
 export const CMS_TOKEN_KEY = "nirav_cms_admin_token";
 
+// Curated Google Fonts offered in the typography picker (loaded on demand via a
+// <link> to fonts.googleapis.com — only the families actually used are fetched).
+export const GOOGLE_FONTS = [
+  "Inter", "Poppins", "Montserrat", "Roboto", "Open Sans", "Lato", "Raleway",
+  "Playfair Display", "Merriweather", "Space Grotesk", "DM Sans", "Manrope",
+  "Sora", "Outfit", "Plus Jakarta Sans", "Archivo", "Bebas Neue", "Oswald",
+  "Nunito", "Nunito Sans", "Work Sans", "Rubik", "Karla", "Mulish", "Quicksand",
+  "Josefin Sans", "Barlow", "Cabin", "PT Sans", "PT Serif", "Source Sans 3",
+  "Source Serif 4", "Libre Franklin", "Libre Baskerville", "Fira Sans",
+  "Fira Code", "IBM Plex Sans", "IBM Plex Serif", "IBM Plex Mono", "Roboto Mono",
+  "Roboto Slab", "Roboto Condensed", "Titillium Web", "Cairo", "Hind",
+  "Kanit", "Prompt", "Heebo", "Assistant", "Dosis", "Teko", "Anton",
+  "Archivo Black", "Abril Fatface", "Bitter", "Crimson Text", "Cormorant",
+  "Cormorant Garamond", "EB Garamond", "Lora", "Domine", "Zilla Slab",
+  "Arvo", "Alegreya", "Alegreya Sans", "Vollkorn", "Spectral", "Noto Sans",
+  "Noto Serif", "Exo 2", "Saira", "Chivo", "Red Hat Display", "Red Hat Text",
+  "Epilogue", "Figtree", "Onest", "Schibsted Grotesk", "Instrument Sans",
+  "Bricolage Grotesque", "Unbounded", "Syne", "Fraunces", "Newsreader",
+  "Signika", "Overpass", "Jost", "Lexend", "Urbanist", "Public Sans",
+  "Albert Sans", "Be Vietnam Pro", "DM Serif Display", "DM Serif Text",
+  "Marcellus", "Philosopher", "Righteous", "Comfortaa", "Pacifico",
+  "Dancing Script", "Caveat", "Sacramento", "Satisfy", "Lobster",
+  "Great Vibes", "Shadows Into Light", "Permanent Marker", "Kalam",
+];
+
+export const FONT_WEIGHTS = ["300", "400", "500", "600", "700", "800"];
+
+// Box-shadow presets (match the Tenderbuddy StylePanel intensities).
+export const SHADOW_PRESETS = {
+  none: "none",
+  sm: "0 1px 2px rgba(0,0,0,0.18)",
+  md: "0 6px 16px -4px rgba(0,0,0,0.35)",
+  lg: "0 16px 40px -10px rgba(0,0,0,0.45)",
+  xl: "0 30px 70px -20px rgba(0,0,0,0.6)",
+  glow: "0 0 0 1px rgba(255,122,0,0.4), 0 12px 40px -8px rgba(255,122,0,0.5)",
+};
+
+const cssFontFamily = (family) => `'${String(family).replace(/[^a-zA-Z0-9 _-]/g, "")}', sans-serif`;
+
 export const DEFAULT_ORDER = [
   "hero",
   "brandStrip",
@@ -24,6 +63,7 @@ export const DEFAULT_CONTENT = {
     order: [...DEFAULT_ORDER],
   },
   customSections: {},
+  freeItems: {},
   nav: {
     brandName: "Nirav Patel",
     brandRole: "Realtor",
@@ -230,19 +270,36 @@ export function buildElementStyle(content, path, editable = false) {
   const override = getElementOverride(content, path);
   const style = {};
 
-  if (override.x || override.y) {
-    style.transform = `translate(${Number(override.x) || 0}px, ${Number(override.y) || 0}px)`;
+  // Move (translate) + per-axis scale — a horizontal resize drag grows scaleX,
+  // a vertical drag grows scaleY, so text/images grow instead of just re-padding.
+  const tx = Number(override.x) || 0;
+  const ty = Number(override.y) || 0;
+  const sx = Number(override.scaleX) || 1;
+  const sy = Number(override.scaleY) || 1;
+  if (tx || ty || sx !== 1 || sy !== 1) {
+    style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+    style.transformOrigin = "top left";
   }
+
   if (override.w) style.width = `${Number(override.w)}px`;
   if (override.h) style.height = `${Number(override.h)}px`;
   if (override.color) style.color = override.color;
   if (override.background) style.background = override.background;
   if (override.fontSize) style.fontSize = `${Number(override.fontSize)}px`;
+  if (override.fontFamily) style.fontFamily = cssFontFamily(override.fontFamily);
+  if (override.fontWeight) style.fontWeight = override.fontWeight;
+  if (override.letterSpacing) style.letterSpacing = override.letterSpacing;
+  if (override.lineHeight) style.lineHeight = override.lineHeight;
+  if (override.textAlign) style.textAlign = override.textAlign;
   if (override.radius) style.borderRadius = `${Number(override.radius)}px`;
   if (override.padding) style.padding = `${Number(override.padding)}px`;
   if (override.opacity) style.opacity = Number(override.opacity);
   if (override.zIndex) style.zIndex = Number(override.zIndex);
   if (override.objectFit) style.objectFit = override.objectFit;
+  if (override.borderWidth) {
+    style.border = `${Number(override.borderWidth)}px solid ${override.borderColor || "#ffffff"}`;
+  }
+  if (override.shadow && SHADOW_PRESETS[override.shadow]) style.boxShadow = SHADOW_PRESETS[override.shadow];
 
   if (Object.keys(style).length || editable) {
     style.position = "relative";
@@ -256,6 +313,70 @@ export function buildElementStyle(content, path, editable = false) {
   return style;
 }
 
+// Stable data-attribute value used to scope a per-element style rule.
+export function elementCxcClass(path) {
+  return `cxc-${encodeElementPath(path)}`;
+}
+
+// Typography + colour can't just live on the wrapper — the real text sits in
+// children that carry their own classes, so those declarations win. Emit a
+// scoped rule that also targets descendants with !important (like Tenderbuddy),
+// so font family / weight / size / colour / spacing / alignment actually apply.
+export function buildElementScopedCss(content, path) {
+  const o = getElementOverride(content, path);
+  const d = [];
+  if (o.color) d.push(`color:${o.color} !important`);
+  if (o.fontFamily) d.push(`font-family:${cssFontFamily(o.fontFamily)} !important`);
+  if (o.fontWeight) d.push(`font-weight:${o.fontWeight} !important`);
+  if (o.fontSize) d.push(`font-size:${Number(o.fontSize)}px !important`);
+  if (o.lineHeight) d.push(`line-height:${o.lineHeight} !important`);
+  if (o.letterSpacing) d.push(`letter-spacing:${o.letterSpacing} !important`);
+  if (o.textAlign) d.push(`text-align:${o.textAlign} !important`);
+  if (!d.length) return "";
+  const cxc = elementCxcClass(path);
+  return `[data-cxc="${cxc}"],[data-cxc="${cxc}"] *{${d.join(";")}}`;
+}
+
+export function sectionCxcClass(sid) {
+  return `sec-${encodeElementPath(sid)}`;
+}
+
+// Whole-section typography / colour override, applied to the section + its
+// descendants via a scoped !important rule (same trick as elements).
+export function buildSectionScopedCss(content, sid) {
+  const o = getSectionOverride(content, sid);
+  const d = [];
+  if (o.color) d.push(`color:${o.color} !important`);
+  if (o.fontFamily) d.push(`font-family:${cssFontFamily(o.fontFamily)} !important`);
+  if (o.fontWeight) d.push(`font-weight:${o.fontWeight} !important`);
+  if (o.textAlign) d.push(`text-align:${o.textAlign} !important`);
+  if (!d.length) return "";
+  const cxc = sectionCxcClass(sid);
+  return `[data-cxc-sec="${cxc}"],[data-cxc-sec="${cxc}"] *{${d.join(";")}}`;
+}
+
+// Every Google font family referenced by any element/section override.
+export function collectFontFamilies(content) {
+  const fams = new Set();
+  const els = content?.design?.elements || {};
+  for (const key of Object.keys(els)) {
+    if (els[key]?.fontFamily) fams.add(els[key].fontFamily);
+  }
+  const secs = content?.design?.sections || {};
+  for (const key of Object.keys(secs)) {
+    if (secs[key]?.fontFamily) fams.add(secs[key].fontFamily);
+  }
+  return [...fams].filter((f) => GOOGLE_FONTS.includes(f));
+}
+
+// Build a fonts.googleapis.com stylesheet href for the families actually used.
+export function googleFontsHref(families) {
+  const fams = [...new Set((families || []).filter((f) => GOOGLE_FONTS.includes(f)))];
+  if (!fams.length) return "";
+  const q = fams.map((f) => `family=${f.replace(/ /g, "+")}:wght@300;400;500;600;700;800`).join("&");
+  return `https://fonts.googleapis.com/css2?${q}&display=swap`;
+}
+
 export function listContentFields(content = DEFAULT_CONTENT) {
   const fields = [];
   walk(content, "", fields);
@@ -267,6 +388,7 @@ function walk(value, path, fields) {
   if (path === "design" || path.startsWith("design.")) return;
   if (path === "layout" || path.startsWith("layout.")) return;
   if (path === "customSections" || path.startsWith("customSections.")) return;
+  if (path === "freeItems" || path.startsWith("freeItems.")) return;
 
   if (typeof value === "string") {
     fields.push({ path, type: isAssetPath(path, value) ? "asset" : "text", value });
@@ -475,6 +597,14 @@ export function removeSection(content, id) {
       }
     }
   }
+  // Free overlay elements attached to this section (any section can carry them).
+  if (next.freeItems) delete next.freeItems[id];
+  if (next.design?.elements) {
+    const fprefix = encodeElementPath(`freeItems.${id}.`);
+    for (const key of Object.keys(next.design.elements)) {
+      if (key.startsWith(fprefix)) delete next.design.elements[key];
+    }
+  }
   if (next.design?.sections) delete next.design.sections[id];
   return next;
 }
@@ -547,6 +677,59 @@ export function removeCanvasElement(content, sectionId, elementId) {
   }
   next = clearElementOverride(next, `customSections.${sectionId}.items.${elementId}.value`);
   return next;
+}
+
+/* ── free overlay elements (Add text / Add image to ANY section) ───────────────
+   content.freeItems[sectionId] = { eid: { type: 'text'|'image', value } }
+   Position / size / style live in the same design.elements override map, keyed
+   by the path `freeItems.<sid>.<eid>.value`, so they move / resize / colour /
+   style exactly like every other editable element. Rendered as absolutely
+   positioned overlays inside that section's frame (edit + public).
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export function getFreeItems(content, sectionId) {
+  const map = content?.freeItems?.[sectionId];
+  return map && typeof map === "object" ? map : {};
+}
+
+export function addFreeItem(content, sectionId, type = "text") {
+  const eid = newId("free");
+  const next = deepClone(content);
+  if (!next.freeItems) next.freeItems = {};
+  if (!next.freeItems[sectionId]) next.freeItems[sectionId] = {};
+  next.freeItems[sectionId][eid] =
+    type === "image"
+      ? { type: "image", value: media("def10c275a38472b55e20fa60a3998ac.png") }
+      : { type: "text", value: "New text" };
+  // Seed a starting position so fresh elements don't all stack at 0,0.
+  const count = Object.keys(next.freeItems[sectionId]).length;
+  const offset = (count - 1) * 26;
+  const seed =
+    type === "image"
+      ? { x: 60 + offset, y: 60 + offset, w: 240, h: 170 }
+      : { x: 60 + offset, y: 60 + offset };
+  const withOverride = setElementOverride(next, `freeItems.${sectionId}.${eid}.value`, seed);
+  return { content: withOverride, elementId: eid };
+}
+
+export function removeFreeItem(content, sectionId, elementId) {
+  let next = deepClone(content);
+  if (next.freeItems?.[sectionId]) delete next.freeItems[sectionId][elementId];
+  next = clearElementOverride(next, `freeItems.${sectionId}.${elementId}.value`);
+  return next;
+}
+
+// Which section a selected path belongs to (used to target "Add element").
+export function sectionIdForPath(content, path) {
+  if (!path) return null;
+  if (path.startsWith("section:")) return path.slice("section:".length);
+  const free = path.match(/^freeItems\.([^.]+)\./);
+  if (free) return free[1];
+  const custom = path.match(/^customSections\.([^.]+)\./);
+  if (custom) return custom[1];
+  const seg = String(path).split(".")[0];
+  if (getSectionOrder(content).includes(seg)) return seg;
+  return null;
 }
 
 /* ── per-section background overrides ─────────────────────────────────────── */

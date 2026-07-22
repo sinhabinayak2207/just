@@ -23,14 +23,24 @@ import {
   Type as TypeIcon,
 } from "lucide-react";
 import {
+  buildElementScopedCss,
   buildElementStyle,
   buildSectionBackground,
+  buildSectionScopedCss,
+  collectFontFamilies,
+  elementCxcClass,
+  FONT_WEIGHTS,
   getByPath,
   getCustomSection,
   getElementOverride,
+  getFreeItems,
   getSectionOrder,
+  GOOGLE_FONTS,
+  googleFontsHref,
   isCustomSectionId,
+  sectionCxcClass,
   sectionLabel,
+  SHADOW_PRESETS,
 } from "../../lib/siteContent";
 import { Counter, Reveal } from "./motion";
 
@@ -47,35 +57,94 @@ function elementLabel(path) {
   return last.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^\w/, (c) => c.toUpperCase());
 }
 
-// A compact floating style popover (precise X/Y/W/H + core style) — the heavy
-// controls, reachable straight from the on-canvas selection.
-function ElementStylePopover({ override, onDesign, onReset, path }) {
+// The full element style panel (a JSX port of Tenderbuddy's StylePanel):
+// position + per-axis scale, typography (100+ Google Fonts, weight, size,
+// line-height, letter-spacing, align, colour) and box (padding, radius, border,
+// background, object-fit, shadow). Shared by the on-canvas popover AND the
+// sidebar inspector so both edit exactly the same override, live.
+export function ElementStyleControls({ override, onDesign, onReset, path }) {
   const num = (key) => (override[key] ?? "");
-  const set = (key, value, asNumber = true) =>
-    onDesign(path, { [key]: value === "" ? "" : asNumber ? Number(value) : value });
+  const str = (key) => (override[key] ?? "");
+  const setN = (key, value) => onDesign(path, { [key]: value === "" ? "" : Number(value) });
+  const setS = (key, value) => onDesign(path, { [key]: value });
   return (
-    <div className="cms-el-pop" onPointerDown={(e) => e.stopPropagation()}>
-      <div className="cms-el-pop-head">Style</div>
-      <div className="cms-el-pop-grid">
-        <label><span>X</span><input type="number" value={num("x")} onChange={(e) => set("x", e.target.value)} /></label>
-        <label><span>Y</span><input type="number" value={num("y")} onChange={(e) => set("y", e.target.value)} /></label>
-        <label><span>W</span><input type="number" value={num("w")} onChange={(e) => set("w", e.target.value)} /></label>
-        <label><span>H</span><input type="number" value={num("h")} onChange={(e) => set("h", e.target.value)} /></label>
-        <label><span>Font</span><input type="number" value={num("fontSize")} onChange={(e) => set("fontSize", e.target.value)} /></label>
-        <label><span>Radius</span><input type="number" value={num("radius")} onChange={(e) => set("radius", e.target.value)} /></label>
-        <label><span>Pad</span><input type="number" value={num("padding")} onChange={(e) => set("padding", e.target.value)} /></label>
-        <label><span>Z</span><input type="number" value={num("zIndex")} onChange={(e) => set("zIndex", e.target.value)} /></label>
-        <label><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={num("opacity")} onChange={(e) => set("opacity", e.target.value)} /></label>
+    <div className="cms-style-controls" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="cms-style-sec">Position &amp; size</div>
+      <div className="cms-style-grid">
+        <label><span>X</span><input type="number" value={num("x")} onChange={(e) => setN("x", e.target.value)} /></label>
+        <label><span>Y</span><input type="number" value={num("y")} onChange={(e) => setN("y", e.target.value)} /></label>
+        <label><span>W</span><input type="number" value={num("w")} onChange={(e) => setN("w", e.target.value)} /></label>
+        <label><span>H</span><input type="number" value={num("h")} onChange={(e) => setN("h", e.target.value)} /></label>
+        <label><span>Scale X</span><input type="number" step="0.1" value={num("scaleX")} onChange={(e) => setN("scaleX", e.target.value)} /></label>
+        <label><span>Scale Y</span><input type="number" step="0.1" value={num("scaleY")} onChange={(e) => setN("scaleY", e.target.value)} /></label>
+        <label><span>Z</span><input type="number" value={num("zIndex")} onChange={(e) => setN("zIndex", e.target.value)} /></label>
+        <label><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={num("opacity")} onChange={(e) => setN("opacity", e.target.value)} /></label>
+      </div>
+
+      <div className="cms-style-sec">Typography</div>
+      <label className="cms-style-row"><span>Font family</span>
+        <select value={str("fontFamily")} onChange={(e) => setS("fontFamily", e.target.value)}>
+          <option value="">Default</option>
+          {GOOGLE_FONTS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </label>
+      <div className="cms-style-grid">
+        <label><span>Size</span><input type="number" value={num("fontSize")} onChange={(e) => setN("fontSize", e.target.value)} /></label>
+        <label><span>Weight</span>
+          <select value={str("fontWeight")} onChange={(e) => setS("fontWeight", e.target.value)}>
+            <option value="">Auto</option>
+            {FONT_WEIGHTS.map((w) => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </label>
+        <label><span>Align</span>
+          <select value={str("textAlign")} onChange={(e) => setS("textAlign", e.target.value)}>
+            <option value="">Auto</option>
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <label><span>Line-h</span><input value={str("lineHeight")} placeholder="1.4" onChange={(e) => setS("lineHeight", e.target.value)} /></label>
+        <label><span>Letter</span><input value={str("letterSpacing")} placeholder="0.02em" onChange={(e) => setS("letterSpacing", e.target.value)} /></label>
+        <label className="cms-style-color"><span>Color</span><input type="color" value={override.color || "#ffffff"} onChange={(e) => setS("color", e.target.value)} /></label>
+      </div>
+
+      <div className="cms-style-sec">Box &amp; effects</div>
+      <div className="cms-style-grid">
+        <label><span>Pad</span><input type="number" value={num("padding")} onChange={(e) => setN("padding", e.target.value)} /></label>
+        <label><span>Radius</span><input type="number" value={num("radius")} onChange={(e) => setN("radius", e.target.value)} /></label>
+        <label><span>Border w</span><input type="number" value={num("borderWidth")} onChange={(e) => setN("borderWidth", e.target.value)} /></label>
+        <label className="cms-style-color"><span>Border</span><input type="color" value={override.borderColor || "#ffffff"} onChange={(e) => setS("borderColor", e.target.value)} /></label>
+        <label className="cms-style-color"><span>BG</span><input type="color" value={override.background || "#111111"} onChange={(e) => setS("background", e.target.value)} /></label>
         <label><span>Fit</span>
-          <select value={override.objectFit ?? ""} onChange={(e) => set("objectFit", e.target.value, false)}>
+          <select value={str("objectFit")} onChange={(e) => setS("objectFit", e.target.value)}>
             <option value="">auto</option>
             <option value="cover">cover</option>
             <option value="contain">contain</option>
             <option value="fill">fill</option>
           </select>
         </label>
+        <label className="cms-style-wide"><span>Shadow</span>
+          <select value={override.shadow || "none"} onChange={(e) => setS("shadow", e.target.value)}>
+            {Object.keys(SHADOW_PRESETS).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
       </div>
-      <button type="button" className="cms-el-pop-reset" onClick={() => onReset(path)}>Reset element</button>
+
+      <div className="cms-style-actions">
+        <button type="button" onClick={() => onDesign(path, { color: "", background: "" })}>Clear colours</button>
+        <button type="button" onClick={() => onReset(path)}>Reset element</button>
+      </div>
+    </div>
+  );
+}
+
+// The on-canvas floating version — the same controls, in a scrollable card.
+function ElementStylePopover({ override, onDesign, onReset, path }) {
+  return (
+    <div className="cms-el-pop" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="cms-el-pop-head">Style</div>
+      <ElementStyleControls override={override} onDesign={onDesign} onReset={onReset} path={path} />
     </div>
   );
 }
@@ -93,6 +162,7 @@ function EditableFrame({
   onResize = () => {},
   onDesign = () => {},
   onReset = () => {},
+  onDelete,
   children,
   block = false,
   label,
@@ -101,7 +171,7 @@ function EditableFrame({
   const ref = useRef(null);
   const drag = useRef(null);
   const [hover, setHover] = useState(false);
-  const [live, setLive] = useState(null); // { x, y } | { w, h }
+  const [live, setLive] = useState(null); // { x, y } | { sx, sy }
   const [panel, setPanel] = useState(false);
 
   if (!editable) return children;
@@ -112,15 +182,19 @@ function EditableFrame({
 
   const style = buildElementStyle(content, path, true);
   style.display = override.display || (block ? "block" : "inline-block");
+  // While dragging, mirror the live transform (move → translate, resize →
+  // per-axis scale) over the persisted values so the element tracks the cursor.
   if (live) {
-    if (live.x != null) style.transform = `translate(${live.x}px, ${live.y}px)`;
-    if (live.w != null) {
-      style.width = `${live.w}px`;
-      style.height = `${live.h}px`;
-      style.overflow = "hidden";
-    }
+    const ox = Number(override.x) || 0;
+    const oy = Number(override.y) || 0;
+    const osx = Number(override.scaleX) || 1;
+    const osy = Number(override.scaleY) || 1;
+    if (live.x != null) style.transform = `translate(${live.x}px, ${live.y}px) scale(${osx}, ${osy})`;
+    else style.transform = `translate(${ox}px, ${oy}px) scale(${live.sx}, ${live.sy})`;
+    style.transformOrigin = "top left";
   }
 
+  const round2 = (v) => Math.round(v * 100) / 100;
   const down = (event, mode) => {
     event.preventDefault();
     event.stopPropagation();
@@ -132,8 +206,10 @@ function EditableFrame({
       sy: event.clientY,
       ox: Number(override.x) || 0,
       oy: Number(override.y) || 0,
-      ow: Number(override.w) || Math.round(el?.offsetWidth || 160),
-      oh: Number(override.h) || Math.round(el?.offsetHeight || 44),
+      osx: Number(override.scaleX) || 1,
+      osy: Number(override.scaleY) || 1,
+      ew: Math.round(el?.offsetWidth || 160),
+      eh: Math.round(el?.offsetHeight || 44),
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
@@ -143,7 +219,8 @@ function EditableFrame({
     const dx = event.clientX - d.sx;
     const dy = event.clientY - d.sy;
     if (d.mode === "move") setLive({ x: d.ox + dx, y: d.oy + dy });
-    else setLive({ w: Math.max(24, d.ow + dx), h: Math.max(18, d.oh + dy) });
+    // Per-axis scale: horizontal drag → scaleX, vertical drag → scaleY.
+    else setLive({ sx: Math.max(0.2, d.osx + dx / d.ew), sy: Math.max(0.2, d.osy + dy / d.eh) });
   };
   const up = (event) => {
     const d = drag.current;
@@ -152,10 +229,12 @@ function EditableFrame({
     const dx = event.clientX - d.sx;
     const dy = event.clientY - d.sy;
     if (d.mode === "move") onMove(path, { x: Math.round(d.ox + dx), y: Math.round(d.oy + dy) });
-    else onResize(path, { w: Math.round(Math.max(24, d.ow + dx)), h: Math.round(Math.max(18, d.oh + dy)) });
+    else onResize(path, { scaleX: round2(Math.max(0.2, d.osx + dx / d.ew)), scaleY: round2(Math.max(0.2, d.osy + dy / d.eh)) });
     setLive(null);
   };
 
+  const scopedCss = buildElementScopedCss(content, path);
+  const cxc = scopedCss ? elementCxcClass(path) : undefined;
   const Wrapper = block ? "div" : "span";
 
   return (
@@ -163,6 +242,7 @@ function EditableFrame({
       ref={ref}
       className={`cms-canvas-element${selected ? " is-selected" : ""}`}
       data-cms-frame={path}
+      data-cxc={cxc}
       style={style}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
@@ -171,6 +251,7 @@ function EditableFrame({
         onSelect(path);
       }}
     >
+      {scopedCss && <style>{scopedCss}</style>}
       {children}
 
       {show && (
@@ -219,6 +300,14 @@ function EditableFrame({
             <input type="color" value={override.background || "#111111"} onChange={(e) => onDesign(path, { background: e.target.value })} />
           </label>
           <button type="button" title="Clear colours" onClick={() => onDesign(path, { color: "", background: "" })}>⌫</button>
+          {onDelete && (
+            <>
+              <span className="cms-el-sep" />
+              <button type="button" className="cms-el-del" title="Delete element" onClick={onDelete}>
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -232,7 +321,16 @@ function EditableFrame({
 function EditableText({ path, content, editable, onChange = () => {}, as = "span", className = "", ...frame }) {
   const Tag = as;
   const value = String(getByPath(content, path) ?? "");
-  if (!editable) return <Tag className={className} style={buildElementStyle(content, path)}>{value}</Tag>;
+  if (!editable) {
+    const scopedCss = buildElementScopedCss(content, path);
+    const cxc = scopedCss ? elementCxcClass(path) : undefined;
+    return (
+      <>
+        {scopedCss && <style>{scopedCss}</style>}
+        <Tag className={className} data-cxc={cxc} style={buildElementStyle(content, path)}>{value}</Tag>
+      </>
+    );
+  }
 
   return (
     <EditableFrame path={path} content={content} editable={editable} block={blockTags.has(as)} {...frame}>
@@ -284,13 +382,18 @@ export default function LandingSections({
   onSelectSection = () => {},
   onAddCanvasElement = () => {},
   onRemoveCanvasElement = () => {},
+  onRemoveFreeItem = () => {},
 }) {
   const editorProps = { selectedPath, onSelect, onMove, onResize, onDesign, onReset };
-  const sectionApi = { editable, selectedPath, onSelectSection };
+  // SectionFrame renders the per-section free-element overlay, so it needs the
+  // element editor props + text change + remove handler too.
+  const sectionApi = { editable, onSelectSection, onChange, onRemoveFreeItem, ...editorProps };
   const order = getSectionOrder(content);
+  const fontsHref = googleFontsHref(collectFontFamilies(content));
 
   return (
     <div className={`npb-site${editable ? " npb-site-editing" : ""}`}>
+      {fontsHref && <link rel="stylesheet" href={fontsHref} />}
       {showCmsButton && (
         <a className="cms-open-button" href="/admin/site-builder">
           Open CMS Canvas
@@ -331,10 +434,12 @@ export default function LandingSections({
 
 // Wraps a section so it can carry a per-section background (colour / gradient /
 // image + overlay) and be selected on the canvas by clicking its empty area.
-function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, children }) {
+function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, onChange, onRemoveFreeItem, children, ...editorProps }) {
   const [hover, setHover] = useState(false);
   const { hasBg, layerStyle, overlayStyle } = buildSectionBackground(content, sid);
   const selected = editable && selectedPath === `section:${sid}`;
+  const scopedCss = buildSectionScopedCss(content, sid);
+  const secCxc = scopedCss ? sectionCxcClass(sid) : undefined;
 
   const bg = hasBg ? (
     <>
@@ -343,11 +448,25 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, c
     </>
   ) : null;
 
+  const freeLayer = (
+    <FreeItemsLayer
+      sid={sid}
+      content={content}
+      editable={editable}
+      selectedPath={selectedPath}
+      onChange={onChange}
+      onRemoveFreeItem={onRemoveFreeItem}
+      {...editorProps}
+    />
+  );
+
   if (!editable) {
     return (
-      <div className={`npb-section-frame${hasBg ? " has-bg" : ""}`} data-section={sid}>
+      <div className={`npb-section-frame${hasBg ? " has-bg" : ""}`} data-section={sid} data-cxc-sec={secCxc}>
+        {scopedCss && <style>{scopedCss}</style>}
         {bg}
         {children}
+        {freeLayer}
       </div>
     );
   }
@@ -356,12 +475,15 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, c
     <div
       className={`npb-section-frame is-editing${hasBg ? " has-bg" : ""}${selected ? " is-selected" : ""}`}
       data-section={sid}
+      data-cxc-sec={secCxc}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
       onPointerDown={() => onSelectSection(sid)}
     >
+      {scopedCss && <style>{scopedCss}</style>}
       {bg}
       {children}
+      {freeLayer}
       {(hover || selected) && (
         <button
           type="button"
@@ -376,6 +498,44 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, c
         </button>
       )}
       {(hover || selected) && <span className="npb-section-ring" aria-hidden="true" />}
+    </div>
+  );
+}
+
+// Overlay layer rendered inside EVERY section frame. Holds the free TEXT / IMAGE
+// elements a user added to that section via the canvas "Add element" control.
+// Each is absolutely positioned and fully move / resize / colour / style editable
+// like any other element (and renders identically on the public site).
+function FreeItemsLayer({ sid, content, editable, selectedPath, onChange, onRemoveFreeItem, ...editorProps }) {
+  const items = getFreeItems(content, sid);
+  const entries = Object.entries(items);
+  if (!entries.length) return null;
+
+  return (
+    <div className={`npb-free-layer${editable ? " is-editing" : ""}`}>
+      {entries.map(([eid, item]) => {
+        if (!item) return null;
+        const path = `freeItems.${sid}.${eid}.value`;
+        const label = item.type === "image" ? "Image" : "Text";
+        const common = {
+          path,
+          content,
+          editable,
+          selectedPath,
+          label,
+          onDelete: () => onRemoveFreeItem(sid, eid),
+          ...editorProps,
+        };
+        return (
+          <div key={eid} className="npb-free-el">
+            {item.type === "image" ? (
+              <EditableImage {...common} block alt="" className="npb-free-img" />
+            ) : (
+              <EditableText {...common} onChange={onChange} as="div" className="npb-free-text" />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

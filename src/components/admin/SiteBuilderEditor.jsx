@@ -3,40 +3,46 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Image as ImageIcon,
   LayoutGrid,
   Plus,
   Save,
   Trash2,
   Type as TypeIcon,
 } from "lucide-react";
-import LandingSections from "../landing/LandingSections";
+import LandingSections, { ElementStyleControls } from "../landing/LandingSections";
 import AssetPicker from "./AssetPicker";
 import {
   addBuiltinSection,
   addCanvasElement,
   addCustomSection,
+  addFreeItem,
   BUILTIN_SECTION_IDS,
   characterMap,
   clearElementOverride,
   clearSectionOverride,
   CMS_TOKEN_KEY,
   DEFAULT_CONTENT,
+  FONT_WEIGHTS,
   getByPath,
   getElementOverride,
   getSectionFields,
   getSectionOrder,
   getSectionOverride,
+  GOOGLE_FONTS,
   isCustomSectionId,
   listContentFields,
   loadContent,
   loadContentFromApi,
   moveSection,
   removeCanvasElement,
+  removeFreeItem,
   removeSection,
   resolveContent,
   saveContent,
   saveContentToApi,
   SECTIONS,
+  sectionIdForPath,
   sectionLabel,
   setByPath,
   setElementOverride,
@@ -44,12 +50,14 @@ import {
   uploadAssetToApi,
 } from "../../lib/siteContent";
 
-// Which content path holds a section's built-in background image (so the
-// section background control edits the real field for those sections).
-const customElType = (content, path) => {
-  const match = String(path).match(/^customSections\.([^.]+)\.items\.([^.]+)\.value$/);
-  if (!match) return null;
-  return content?.customSections?.[match[1]]?.items?.[match[2]]?.type || "text";
+// The type ('text' | 'image') of an overlay element referenced by its value path
+// — covers both custom-canvas items and free elements added to any section.
+const overlayElType = (content, path) => {
+  let match = String(path).match(/^customSections\.([^.]+)\.items\.([^.]+)\.value$/);
+  if (match) return content?.customSections?.[match[1]]?.items?.[match[2]]?.type || "text";
+  match = String(path).match(/^freeItems\.([^.]+)\.([^.]+)\.value$/);
+  if (match) return content?.freeItems?.[match[1]]?.[match[2]]?.type || "text";
+  return null;
 };
 
 export default function SiteBuilderEditor() {
@@ -66,6 +74,7 @@ export default function SiteBuilderEditor() {
   const [uploadingPath, setUploadingPath] = useState("");
   const [selectedPath, setSelectedPath] = useState("hero.line1");
   const [addingSection, setAddingSection] = useState(false);
+  const [addElOpen, setAddElOpen] = useState(false);
 
   const fields = useMemo(() => getSectionFields(activeSection, content), [activeSection, content]);
   const allFields = useMemo(() => listContentFields(content), [content]);
@@ -79,11 +88,14 @@ export default function SiteBuilderEditor() {
   const selectedSectionId = selectedPath.startsWith("section:") ? selectedPath.slice("section:".length) : "";
   const sectionOverride = selectedSectionId ? getSectionOverride(content, selectedSectionId) : {};
 
-  const customType = customElType(content, selectedPath);
+  const overlayType = overlayElType(content, selectedPath);
   const selectedField =
     allFields.find((field) => field.path === selectedPath) ||
-    (customType ? { path: selectedPath, type: customType === "image" ? "asset" : "text" } : null);
+    (overlayType ? { path: selectedPath, type: overlayType === "image" ? "asset" : "text" } : null);
   const selectedOverride = selectedPath && !selectedSectionId ? getElementOverride(content, selectedPath) : {};
+
+  // Which section the "Add element" control drops a new text/image into.
+  const activeSectionForAdd = sectionIdForPath(content, selectedPath) || order[0] || "hero";
 
   useEffect(() => {
     let mounted = true;
@@ -118,13 +130,6 @@ export default function SiteBuilderEditor() {
     commit((current) => setElementOverride(current, path, patch));
   };
   const resetElement = (path) => commit((current) => clearElementOverride(current, path));
-  const resetElementDesign = () => {
-    if (selectedPath) resetElement(selectedPath);
-  };
-
-  const updateSelectedNumber = (key, value) =>
-    updateElementDesign(selectedPath, { [key]: value === "" ? "" : Number(value) });
-  const updateSelectedText = (key, value) => updateElementDesign(selectedPath, { [key]: value });
 
   const selectElement = (path) => {
     setSelectedPath(path);
@@ -182,6 +187,19 @@ export default function SiteBuilderEditor() {
     });
   };
   const removeCanvasEl = (sid, eid) => commit((current) => removeCanvasElement(current, sid, eid));
+
+  // ── free overlay elements: Add text / image to ANY (active) section ─────────
+  const addFreeEl = (type) => {
+    const sid = activeSectionForAdd;
+    setAddElOpen(false);
+    setContent((current) => {
+      const { content: next, elementId } = addFreeItem(current, sid, type);
+      setJsonDraft(JSON.stringify(next, null, 2));
+      setSelectedPath(`freeItems.${sid}.${elementId}.value`); // select the new element
+      return next;
+    });
+  };
+  const removeFreeEl = (sid, eid) => commit((current) => removeFreeItem(current, sid, eid));
 
   // ── supabase auth / persistence ────────────────────────────────────────────
   const handleUnlock = () => {
@@ -425,31 +443,12 @@ export default function SiteBuilderEditor() {
                     </span>
                   </div>
                 )}
-                <div className="cms-style-grid">
-                  <label><span>X</span><input type="number" value={selectedOverride.x ?? ""} onChange={(e) => updateSelectedNumber("x", e.target.value)} /></label>
-                  <label><span>Y</span><input type="number" value={selectedOverride.y ?? ""} onChange={(e) => updateSelectedNumber("y", e.target.value)} /></label>
-                  <label><span>W</span><input type="number" value={selectedOverride.w ?? ""} onChange={(e) => updateSelectedNumber("w", e.target.value)} /></label>
-                  <label><span>H</span><input type="number" value={selectedOverride.h ?? ""} onChange={(e) => updateSelectedNumber("h", e.target.value)} /></label>
-                  <label><span>Font</span><input type="number" value={selectedOverride.fontSize ?? ""} onChange={(e) => updateSelectedNumber("fontSize", e.target.value)} /></label>
-                  <label><span>Z</span><input type="number" value={selectedOverride.zIndex ?? ""} onChange={(e) => updateSelectedNumber("zIndex", e.target.value)} /></label>
-                  <label><span>Radius</span><input type="number" value={selectedOverride.radius ?? ""} onChange={(e) => updateSelectedNumber("radius", e.target.value)} /></label>
-                  <label><span>Pad</span><input type="number" value={selectedOverride.padding ?? ""} onChange={(e) => updateSelectedNumber("padding", e.target.value)} /></label>
-                  <label><span>Color</span><input value={selectedOverride.color ?? ""} placeholder="#ffffff" onChange={(e) => updateSelectedText("color", e.target.value)} /></label>
-                  <label><span>BG</span><input value={selectedOverride.background ?? ""} placeholder="transparent" onChange={(e) => updateSelectedText("background", e.target.value)} /></label>
-                  <label><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={selectedOverride.opacity ?? ""} onChange={(e) => updateSelectedNumber("opacity", e.target.value)} /></label>
-                  <label>
-                    <span>Fit</span>
-                    <select value={selectedOverride.objectFit ?? ""} onChange={(e) => updateSelectedText("objectFit", e.target.value)}>
-                      <option value="">auto</option>
-                      <option value="cover">cover</option>
-                      <option value="contain">contain</option>
-                      <option value="fill">fill</option>
-                    </select>
-                  </label>
-                </div>
-                <button type="button" onClick={resetElementDesign}>
-                  Reset selected style
-                </button>
+                <ElementStyleControls
+                  override={selectedOverride}
+                  onDesign={updateElementDesign}
+                  onReset={resetElement}
+                  path={selectedPath}
+                />
               </>
             ) : (
               <p className="cms-muted">Click any text or image on the canvas, or a section to style its background.</p>
@@ -547,8 +546,37 @@ export default function SiteBuilderEditor() {
                 onSelectSection={selectSection}
                 onAddCanvasElement={addCanvasEl}
                 onRemoveCanvasElement={removeCanvasEl}
+                onRemoveFreeItem={removeFreeEl}
               />
             </div>
+          </div>
+
+          {/* Always-available floating control: drop a Text/Image element onto
+              the currently active section (whichever section holds the current
+              selection). The new element is auto-selected for immediate editing. */}
+          <div className={`cms-add-el-fab${addElOpen ? " is-open" : ""}`}>
+            {addElOpen && (
+              <div className="cms-add-el-menu">
+                <span className="cms-add-el-target">
+                  Add to: <strong>{sectionLabel(activeSectionForAdd)}</strong>
+                </span>
+                <button type="button" onClick={() => addFreeEl("text")}>
+                  <TypeIcon size={14} /> Text element
+                </button>
+                <button type="button" onClick={() => addFreeEl("image")}>
+                  <ImageIcon size={14} /> Image element
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              className="cms-add-el-trigger"
+              title="Add a text or image element to the active section"
+              onClick={() => setAddElOpen((v) => !v)}
+            >
+              <Plus size={18} />
+              <span>Add element</span>
+            </button>
           </div>
         </section>
       </div>
@@ -556,24 +584,34 @@ export default function SiteBuilderEditor() {
   );
 }
 
-// Section background inspector: solid colour / gradient / image + overlay.
+// Section inspector: solid background colour, gradient, image + overlay, and
+// whole-section typography (text colour / font / weight / align).
 function SectionBgControls({ sid, override, onChange, onClear, onUpload, uploading }) {
   return (
     <div className="cms-bg-controls">
       <p className="cms-selected-path">{sectionLabel(sid)} section</p>
 
-      <div className="cms-bg-row">
-        <label className="cms-field cms-bg-color">
-          <span>Solid colour</span>
+      {/* Prominent solid background colour — big swatch + hex box. */}
+      <div className="cms-bg-solid">
+        <span className="cms-bg-solid-label">Background colour</span>
+        <div className="cms-bg-solid-row">
+          <label className="cms-bg-solid-swatch" style={{ background: override.bg || "transparent" }}>
+            <input
+              type="color"
+              value={override.bg || "#101010"}
+              onChange={(event) => onChange({ bg: event.target.value, gradFrom: "", gradTo: "" })}
+            />
+          </label>
           <input
-            type="color"
-            value={override.bg || "#101010"}
+            className="cms-bg-solid-hex"
+            value={override.bg || ""}
+            placeholder="#101010 or transparent"
             onChange={(event) => onChange({ bg: event.target.value, gradFrom: "", gradTo: "" })}
           />
-        </label>
-        <button type="button" className="cms-linkish" onClick={() => onChange({ bg: "" })}>
-          clear
-        </button>
+          <button type="button" className="cms-linkish" onClick={() => onChange({ bg: "" })}>
+            clear
+          </button>
+        </div>
       </div>
 
       <div className="cms-style-grid">
@@ -617,6 +655,35 @@ function SectionBgControls({ sid, override, onChange, onClear, onUpload, uploadi
       <div className="cms-style-grid">
         <label><span>Overlay</span><input type="number" min="0" max="1" step="0.05" value={override.overlay ?? ""} placeholder="0–1" onChange={(e) => onChange({ overlay: e.target.value === "" ? "" : Number(e.target.value) })} /></label>
         <label className="cms-bg-color"><span>Overlay col</span><input type="color" value={override.overlayColor || "#000000"} onChange={(e) => onChange({ overlayColor: e.target.value })} /></label>
+      </div>
+
+      {/* Whole-section typography (applies to all text in the section). */}
+      <div className="cms-style-sec cms-bg-typo-head">Section text &amp; font</div>
+      <label className="cms-style-row"><span>Font family</span>
+        <select value={override.fontFamily || ""} onChange={(e) => onChange({ fontFamily: e.target.value })}>
+          <option value="">Default</option>
+          {GOOGLE_FONTS.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+      </label>
+      <div className="cms-style-grid">
+        <label className="cms-style-color"><span>Text col</span><input type="color" value={override.color || "#ffffff"} onChange={(e) => onChange({ color: e.target.value })} /></label>
+        <label><span>Weight</span>
+          <select value={override.fontWeight || ""} onChange={(e) => onChange({ fontWeight: e.target.value })}>
+            <option value="">Auto</option>
+            {FONT_WEIGHTS.map((w) => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </label>
+        <label><span>Align</span>
+          <select value={override.textAlign || ""} onChange={(e) => onChange({ textAlign: e.target.value })}>
+            <option value="">Auto</option>
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <label><span>Text col (clear)</span>
+          <button type="button" className="cms-linkish" onClick={() => onChange({ color: "", fontFamily: "", fontWeight: "", textAlign: "" })}>reset text</button>
+        </label>
       </div>
 
       <button type="button" onClick={onClear}>
