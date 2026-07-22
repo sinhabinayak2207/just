@@ -511,6 +511,20 @@ select {
   pointer-events: auto;
 }
 
+/* In the EDITOR only, make the decorative shape (red circle) reachable — the
+   portrait image (inset:0, z-index:4) otherwise covers it completely so it can
+   never be selected ("red circle not moving"). We keep it at its real z-order at
+   rest (so the canvas matches the preview), and only lift it ABOVE the portrait
+   while the hero is hovered or the shape is selected — i.e. exactly when the user
+   is reaching for it. On the public site it always keeps its real z-order. */
+.npb-site-editing .npb-portrait-stage > .npb-shape {
+  pointer-events: auto;
+}
+.npb-site-editing .npb-section-frame:hover .npb-portrait-stage > .npb-shape,
+.npb-site-editing .npb-portrait-stage > .npb-shape.is-selected {
+  z-index: 8;
+}
+
 /* Match the public .npb-hero-person exactly (fill the stage, object-fit contain,
    anchored bottom) so the portrait renders identically on canvas and preview. */
 .npb-site-editing .npb-portrait-stage > .cms-canvas-element:not(.npb-shape) .npb-hero-person {
