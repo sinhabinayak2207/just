@@ -480,8 +480,15 @@ select {
   overflow: visible;
 }
 
+/* The hero copy (z-index:4) overlaps the portrait's bounding box, so the
+   portrait (stage z-index:3) — including its top-left move chip — sat *under*
+   the text and couldn't be grabbed. In editing, lift the stage above the copy,
+   let empty stage areas pass clicks through to the text, and have the wrapper
+   hug the visible image (pointer-events only on the image itself). */
 .npb-site-editing .npb-portrait-stage {
-  pointer-events: auto;
+  z-index: 30;
+  pointer-events: none;
+  overflow: visible;
 }
 
 .npb-site-editing .npb-hero-bg > .cms-canvas-element,
@@ -498,14 +505,16 @@ select {
   right: 0;
   bottom: 0;
   z-index: 4;
-  width: 100%;
+  width: auto;
   height: 100%;
+  pointer-events: auto;
 }
 
 .npb-site-editing .npb-portrait-stage > .cms-canvas-element .npb-hero-person {
   position: static;
-  width: 100%;
+  width: auto;
   height: 100%;
+  max-width: none;
 }
 
 .npb-site-editing .npb-hero-bg > .cms-canvas-element img,
@@ -2277,4 +2286,33 @@ select {
 
 .cms-bg-typo-head {
   color: var(--tb-accent-dk);
+}
+
+/* hidden-element notice in the inspector */
+.cms-hidden-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 122, 0, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 122, 0, 0.08);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--tb-ink);
+}
+
+.cms-hidden-note button {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 7px;
+  background: #ff7a00;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cms-hidden-note button:hover {
+  background: #ea6a00;
 }

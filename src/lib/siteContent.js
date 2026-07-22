@@ -302,7 +302,12 @@ export function buildElementStyle(content, path, editable = false) {
   if (override.shadow && SHADOW_PRESETS[override.shadow]) style.boxShadow = SHADOW_PRESETS[override.shadow];
 
   if (Object.keys(style).length || editable) {
-    style.position = "relative";
+    // Only force a positioning context when editing (chips/handles need it) or
+    // when the element carries a z-index. On the public site we must NOT clobber
+    // an element's own CSS position (e.g. the absolutely-placed hero portrait) —
+    // a transform move/scale applies fine without it, and overriding it would
+    // knock the element out of place.
+    if (editable || override.zIndex != null) style.position = "relative";
     style.display = override.display || "inline-block";
   }
 

@@ -300,14 +300,15 @@ function EditableFrame({
             <input type="color" value={override.background || "#111111"} onChange={(e) => onDesign(path, { background: e.target.value })} />
           </label>
           <button type="button" title="Clear colours" onClick={() => onDesign(path, { color: "", background: "" })}>⌫</button>
-          {onDelete && (
-            <>
-              <span className="cms-el-sep" />
-              <button type="button" className="cms-el-del" title="Delete element" onClick={onDelete}>
-                <Trash2 size={13} />
-              </button>
-            </>
-          )}
+          <span className="cms-el-sep" />
+          <button
+            type="button"
+            className="cms-el-del"
+            title={onDelete ? "Delete element" : "Hide element"}
+            onClick={onDelete ? onDelete : () => onDesign(path, { hidden: true })}
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       )}
 
@@ -321,6 +322,7 @@ function EditableFrame({
 function EditableText({ path, content, editable, onChange = () => {}, as = "span", className = "", ...frame }) {
   const Tag = as;
   const value = String(getByPath(content, path) ?? "");
+  if (getElementOverride(content, path).hidden) return null; // hidden on canvas + public
   if (!editable) {
     const scopedCss = buildElementScopedCss(content, path);
     const cxc = scopedCss ? elementCxcClass(path) : undefined;
@@ -348,6 +350,7 @@ function EditableText({ path, content, editable, onChange = () => {}, as = "span
 }
 
 function EditableImage({ path, content, editable, className = "", alt = "", block = false, ...frame }) {
+  if (getElementOverride(content, path).hidden) return null; // hidden cleanly (no broken-image box)
   const image = (
     <img
       src={String(getByPath(content, path) || "")}

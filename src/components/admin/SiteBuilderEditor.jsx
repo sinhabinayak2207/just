@@ -443,6 +443,14 @@ export default function SiteBuilderEditor() {
                     </span>
                   </div>
                 )}
+                {selectedOverride.hidden && (
+                  <div className="cms-hidden-note">
+                    <span>This element is hidden.</span>
+                    <button type="button" onClick={() => updateElementDesign(selectedPath, { hidden: "" })}>
+                      Show element
+                    </button>
+                  </div>
+                )}
                 <ElementStyleControls
                   override={selectedOverride}
                   onDesign={updateElementDesign}
