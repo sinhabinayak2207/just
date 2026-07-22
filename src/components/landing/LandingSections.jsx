@@ -182,7 +182,10 @@ function EditableFrame({
   const chipLabel = label || elementLabel(path);
 
   const style = buildElementStyle(content, path, true);
-  style.display = override.display || (block ? "block" : "inline-block");
+  // Only make it block-aware when a box override already set display (matches the
+  // public StaticEl wrapper). Uncustomised elements keep natural flow so the canvas
+  // wraps text exactly like the preview.
+  if (style.display) style.display = override.display || (block ? "block" : "inline-block");
   // For elements whose own class already positions them (decorative shapes /
   // absolutely-placed layers), don't clobber that position — the transform move
   // still applies on top, and an absolutely positioned wrapper is still a valid
@@ -250,7 +253,6 @@ function EditableFrame({
       ref={ref}
       className={`cms-canvas-element${selected ? " is-selected" : ""}${frameClassName ? ` ${frameClassName}` : ""}`}
       data-cms-frame={path}
-      data-cxc={cxc}
       style={style}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
@@ -260,7 +262,9 @@ function EditableFrame({
       }}
     >
       {scopedCss && <style>{scopedCss}</style>}
-      {children}
+      {/* data-cxc on a display:contents span so scoped colour/typography styles
+          the CONTENT only, never the selection chrome (chip / toolbar / handles). */}
+      {cxc ? <span data-cxc={cxc} style={{ display: "contents" }}>{children}</span> : children}
 
       {show && (
         <span className={`cms-el-ring${selected ? " is-selected" : ""}`} aria-hidden="true" />
@@ -327,18 +331,36 @@ function EditableFrame({
   );
 }
 
+// Public-render mirror of EditableFrame's wrapper: applies the SAME box
+// (buildElementStyle + block-aware display) + scoped CSS around the child, so the
+// live site renders an edited element IDENTICALLY to how it looks on the canvas
+// (WYSIWYG). Untouched elements render with no wrapper so layout is unchanged.
+function StaticEl({ content, path, block, children }) {
+  const override = getElementOverride(content, path);
+  if (override.hidden) return null;
+  const scoped = buildElementScopedCss(content, path);
+  const style = buildElementStyle(content, path, false);
+  if (!scoped && Object.keys(style).length === 0) return children;
+  if (style.display) style.display = override.display || (block ? "block" : "inline-block");
+  const cxc = scoped ? elementCxcClass(path) : undefined;
+  const Wrapper = block ? "div" : "span";
+  return (
+    <>
+      {scoped && <style>{scoped}</style>}
+      <Wrapper data-cxc={cxc} style={style}>{children}</Wrapper>
+    </>
+  );
+}
+
 function EditableText({ path, content, editable, onChange = () => {}, as = "span", className = "", ...frame }) {
   const Tag = as;
   const value = String(getByPath(content, path) ?? "");
   if (getElementOverride(content, path).hidden) return null; // hidden on canvas + public
   if (!editable) {
-    const scopedCss = buildElementScopedCss(content, path);
-    const cxc = scopedCss ? elementCxcClass(path) : undefined;
     return (
-      <>
-        {scopedCss && <style>{scopedCss}</style>}
-        <Tag className={className} data-cxc={cxc} style={buildElementStyle(content, path)}>{value}</Tag>
-      </>
+      <StaticEl content={content} path={path} block={blockTags.has(as)}>
+        <Tag className={className}>{value}</Tag>
+      </StaticEl>
     );
   }
 
@@ -358,16 +380,24 @@ function EditableText({ path, content, editable, onChange = () => {}, as = "span
 }
 
 function EditableImage({ path, content, editable, className = "", alt = "", block = false, ...frame }) {
-  if (getElementOverride(content, path).hidden) return null; // hidden cleanly (no broken-image box)
+  const override = getElementOverride(content, path);
+  if (override.hidden) return null; // hidden cleanly (no broken-image box)
   const src = String(getByPath(content, path) || "");
+  // When the element has a size override, the image fills its (wrapper) box so a
+  // resize actually resizes the picture — identically on canvas + public.
+  const fill = override.w || override.h ? { width: "100%", height: "100%", objectFit: override.objectFit || "cover" } : undefined;
 
   if (!editable) {
     if (!src) return null; // empty image → nothing on the public site (no broken box)
-    return <img src={src} alt={alt} className={className} data-cms-path={path} style={buildElementStyle(content, path)} />;
+    return (
+      <StaticEl content={content} path={path} block={block}>
+        <img src={src} alt={alt} className={className} data-cms-path={path} style={fill} />
+      </StaticEl>
+    );
   }
 
   const inner = src ? (
-    <img src={src} alt={alt} className={className} data-cms-path={path} />
+    <img src={src} alt={alt} className={className} data-cms-path={path} style={fill} />
   ) : (
     <span className="cms-img-placeholder">＋ Add image — upload in the inspector</span>
   );
