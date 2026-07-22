@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { motion, useScroll, useSpring } from "framer-motion";
 import SiteBuilderEditor from "./components/admin/SiteBuilderEditor";
 import LandingSections from "./components/landing/LandingSections";
-import { loadContent } from "./lib/siteContent";
+import { loadContent, loadContentFromApi } from "./lib/siteContent";
 import "./styles.css";
 
 function PublicSite({ preview = false }) {
@@ -13,9 +13,22 @@ function PublicSite({ preview = false }) {
 
   useEffect(() => {
     document.title = preview ? "Preview - Nirav Patel CMS" : "Nirav Patel - Realtor With Builder Eyes";
+    let mounted = true;
+
+    loadContentFromApi()
+      .then((remoteContent) => {
+        if (mounted) setContent(remoteContent);
+      })
+      .catch(() => {
+        if (mounted) setContent(loadContent());
+      });
+
     const sync = () => setContent(loadContent());
     window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
+    return () => {
+      mounted = false;
+      window.removeEventListener("storage", sync);
+    };
   }, [preview]);
 
   return (

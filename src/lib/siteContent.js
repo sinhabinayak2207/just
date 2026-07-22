@@ -1,4 +1,5 @@
 export const STORAGE_KEY = "nirav_site_content_v1";
+export const CMS_TOKEN_KEY = "nirav_cms_admin_token";
 
 export const DEFAULT_ORDER = [
   "hero",
@@ -238,4 +239,92 @@ export function loadContent() {
 
 export function saveContent(content) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+}
+
+export async function loadContentFromApi() {
+  if (typeof window === "undefined") return resolveContent();
+
+  const response = await fetch("/api/admin/content", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message || `Content load failed (${response.status})`);
+  }
+
+  if (!String(response.headers.get("content-type") || "").includes("application/json")) {
+    throw new Error("CMS API is not available on this local dev server.");
+  }
+
+  const payload = await response.json();
+  const content = resolveContent(payload.content || payload.value || payload);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(content));
+  return content;
+}
+
+export async function saveContentToApi(content, token) {
+  const response = await fetch("/api/admin/content", {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token || ""}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message || `Content save failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const saved = resolveContent(payload.content || content);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  return saved;
+}
+
+export async function uploadAssetToApi(file, token) {
+  const dataUrl = await fileToDataUrl(file);
+  const response = await fetch("/api/admin/assets", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token || ""}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fileName: file.name,
+      contentType: file.type || "application/octet-stream",
+      dataUrl,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await readError(response);
+    throw new Error(message || `Asset upload failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readError(response) {
+  try {
+    const payload = await response.json();
+    return payload.error || payload.message || "";
+  } catch {
+    return "";
+  }
 }

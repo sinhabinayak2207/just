@@ -1,7 +1,15 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/admin/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/preview",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/nirav",
       "destination": "/index.html"
     }
   ]

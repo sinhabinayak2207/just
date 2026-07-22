@@ -908,6 +908,13 @@ textarea {
   margin-top: 18px;
 }
 
+.cms-auth {
+  padding: 12px;
+  border: 1px solid rgba(237, 27, 52, 0.26);
+  border-radius: 8px;
+  background: rgba(237, 27, 52, 0.08);
+}
+
 .cms-panel-group h3 {
   margin: 0;
   color: rgba(255, 255, 255, 0.86);
@@ -940,10 +947,19 @@ textarea {
   cursor: pointer;
 }
 
+.cms-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .cms-section-list button.is-active,
 .cms-actions button:first-child {
   border-color: #ed1b34;
   background: #ed1b34;
+}
+
+.cms-actions-tight {
+  margin-top: 0;
 }
 
 .cms-field {
@@ -985,6 +1001,34 @@ textarea {
   object-fit: cover;
   border-radius: 6px;
   background: #222;
+}
+
+.cms-file-control {
+  position: relative;
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px dashed rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.82) !important;
+  background: rgba(255, 255, 255, 0.05);
+  font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif !important;
+  font-size: 0.76rem !important;
+  text-align: center;
+}
+
+.cms-file-control input {
+  position: absolute;
+  inset: 0;
+  min-height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.cms-file-control strong {
+  pointer-events: none;
+  font-weight: 900;
 }
 
 .cms-char-map {
