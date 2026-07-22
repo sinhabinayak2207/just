@@ -501,7 +501,10 @@ select {
   height: 100%;
 }
 
-.npb-site-editing .npb-portrait-stage > .cms-canvas-element {
+/* Only the PORTRAIT image fills the stage. `:not(.npb-shape)` excludes the red
+   circle (and any decorative shape), which must keep its own position + move
+   override instead of being forced to inset:0. */
+.npb-site-editing .npb-portrait-stage > .cms-canvas-element:not(.npb-shape) {
   position: absolute !important;
   inset: 0;
   z-index: 4;
@@ -510,7 +513,7 @@ select {
 
 /* Match the public .npb-hero-person exactly (fill the stage, object-fit contain,
    anchored bottom) so the portrait renders identically on canvas and preview. */
-.npb-site-editing .npb-portrait-stage > .cms-canvas-element .npb-hero-person {
+.npb-site-editing .npb-portrait-stage > .cms-canvas-element:not(.npb-shape) .npb-hero-person {
   position: static;
   width: 100%;
   height: 100%;

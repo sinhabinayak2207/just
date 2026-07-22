@@ -277,6 +277,10 @@ export function buildElementStyle(content, path, editable = false) {
   if (tx || ty) {
     style.transform = `translate(${tx}px, ${ty}px)`;
     style.transformOrigin = "top left";
+    // A moved element must win over any CSS keyframe animation that also drives
+    // `transform` (e.g. the red circle's `npb-red-breathe` scale+rotate) — otherwise
+    // the animation overrides the inline translate and the element snaps back.
+    style.animation = "none";
   }
 
   if (override.w) style.width = `${Number(override.w)}px`;

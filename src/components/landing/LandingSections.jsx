@@ -196,6 +196,9 @@ function EditableFrame({
   // While dragging, mirror the live transform (move → translate, resize →
   // per-axis scale) over the persisted values so the element tracks the cursor.
   if (live) {
+    // Kill any CSS keyframe animation on `transform` so an animated element
+    // (e.g. the breathing red circle) tracks the cursor while being dragged.
+    style.animation = "none";
     if (live.x != null) {
       style.transform = `translate(${live.x}px, ${live.y}px)`;
       style.transformOrigin = "top left";
