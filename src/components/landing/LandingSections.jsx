@@ -35,6 +35,7 @@ import {
   getElementOverride,
   getFreeItems,
   getSectionOrder,
+  getSectionOverride,
   GOOGLE_FONTS,
   googleFontsHref,
   isCustomSectionId,
@@ -166,6 +167,8 @@ function EditableFrame({
   children,
   block = false,
   label,
+  frameClassName = "",
+  keepPosition = false,
 }) {
   const selected = editable && selectedPath === path;
   const ref = useRef(null);
@@ -182,6 +185,11 @@ function EditableFrame({
 
   const style = buildElementStyle(content, path, true);
   style.display = override.display || (block ? "block" : "inline-block");
+  // For elements whose own class already positions them (decorative shapes /
+  // absolutely-placed layers), don't clobber that position — the transform move
+  // still applies on top, and an absolutely positioned wrapper is still a valid
+  // containing block for the chip/handle.
+  if (keepPosition) delete style.position;
   // While dragging, mirror the live transform (move → translate, resize →
   // per-axis scale) over the persisted values so the element tracks the cursor.
   if (live) {
@@ -240,7 +248,7 @@ function EditableFrame({
   return (
     <Wrapper
       ref={ref}
-      className={`cms-canvas-element${selected ? " is-selected" : ""}`}
+      className={`cms-canvas-element${selected ? " is-selected" : ""}${frameClassName ? ` ${frameClassName}` : ""}`}
       data-cms-frame={path}
       data-cxc={cxc}
       style={style}
@@ -370,6 +378,65 @@ function EditableImage({ path, content, editable, className = "", alt = "", bloc
   );
 }
 
+// Wrap ANY non-text visual (an icon, a step number, a pill, a badge) so it is
+// selectable, movable, resizable, colour/style editable and hideable — the same
+// override model as text/images, keyed by a stable `path`. Colour (text) recolours
+// icons via `currentColor`; background paints a chip behind it. `path` needs no
+// content value — overrides live in design.elements regardless.
+function EditablePart({ path, content, editable, label, block = false, children, ...frame }) {
+  if (getElementOverride(content, path).hidden) return null;
+  if (!editable) {
+    // Public: leave the markup untouched unless the part was actually customised,
+    // so wrapping icons/numbers never shifts the live layout.
+    const scoped = buildElementScopedCss(content, path);
+    const style = buildElementStyle(content, path);
+    if (!scoped && Object.keys(style).length === 0) return children;
+    const cxc = scoped ? elementCxcClass(path) : undefined;
+    const Tag = block ? "div" : "span";
+    return (
+      <>
+        {scoped && <style>{scoped}</style>}
+        <Tag className="npb-part" data-cxc={cxc} style={style}>
+          {children}
+        </Tag>
+      </>
+    );
+  }
+  return (
+    <EditableFrame path={path} content={content} editable block={block} label={label} {...frame}>
+      <span className="npb-part">{children}</span>
+    </EditableFrame>
+  );
+}
+
+// Wrap a purely-decorative CSS shape (the red circle, map grid, glow blobs).
+// The EditableFrame wrapper *carries the shape's own class* (so it keeps its
+// look + position), while gaining select / move / scale / recolour / hide. The
+// user's background override recolours the shape; hidden removes it entirely.
+function EditableShape({ path, content, editable, className = "", label, ...frame }) {
+  const override = getElementOverride(content, path);
+  if (override.hidden) return null;
+  if (!editable) {
+    const style = buildElementStyle(content, path);
+    if (override.background) style.background = override.background; // recolour the shape
+    return <div className={className} data-cms-path={path} style={style} aria-hidden="true" />;
+  }
+  return (
+    <EditableFrame
+      path={path}
+      content={content}
+      editable
+      block
+      keepPosition
+      frameClassName={`npb-shape ${className}`}
+      label={label}
+      {...frame}
+    >
+      {null}
+    </EditableFrame>
+  );
+}
+
 export default function LandingSections({
   content,
   editable = false,
@@ -383,6 +450,7 @@ export default function LandingSections({
   onDesign = () => {},
   onReset = () => {},
   onSelectSection = () => {},
+  onSectionResize = () => {},
   onAddCanvasElement = () => {},
   onRemoveCanvasElement = () => {},
   onRemoveFreeItem = () => {},
@@ -390,7 +458,7 @@ export default function LandingSections({
   const editorProps = { selectedPath, onSelect, onMove, onResize, onDesign, onReset };
   // SectionFrame renders the per-section free-element overlay, so it needs the
   // element editor props + text change + remove handler too.
-  const sectionApi = { editable, onSelectSection, onChange, onRemoveFreeItem, ...editorProps };
+  const sectionApi = { editable, onSelectSection, onSectionResize, onChange, onRemoveFreeItem, ...editorProps };
   const order = getSectionOrder(content);
   const fontsHref = googleFontsHref(collectFontFamilies(content));
 
@@ -436,13 +504,31 @@ export default function LandingSections({
 }
 
 // Wraps a section so it can carry a per-section background (colour / gradient /
-// image + overlay) and be selected on the canvas by clicking its empty area.
-function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, onChange, onRemoveFreeItem, children, ...editorProps }) {
+// image + overlay), whole-section typography, a min-height + padding resize, and
+// be selected on the canvas by clicking its empty area.
+function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, onSectionResize = () => {}, onChange, onRemoveFreeItem, children, ...editorProps }) {
   const [hover, setHover] = useState(false);
+  const [liveH, setLiveH] = useState(null);
+  const drag = useRef(null);
+  const ref = useRef(null);
   const { hasBg, layerStyle, overlayStyle } = buildSectionBackground(content, sid);
   const selected = editable && selectedPath === `section:${sid}`;
   const scopedCss = buildSectionScopedCss(content, sid);
   const secCxc = scopedCss ? sectionCxcClass(sid) : undefined;
+  const secO = getSectionOverride(content, sid);
+
+  // Section box overrides (resize): min-height + vertical padding.
+  const frameStyle = {};
+  const minH = liveH != null ? liveH : Number(secO.minHeight) || 0;
+  if (minH) frameStyle.minHeight = `${minH}px`;
+  if (secO.padding != null && secO.padding !== "") {
+    frameStyle.paddingTop = `${Number(secO.padding)}px`;
+    frameStyle.paddingBottom = `${Number(secO.padding)}px`;
+  }
+  // Paint the solid colour on the frame itself too (the .has-bg rule makes the
+  // section transparent), so a section bg colour is guaranteed to show even where
+  // the section's own markup would otherwise cover the behind-content layer.
+  if (secO.bg) frameStyle.background = secO.bg;
 
   const bg = hasBg ? (
     <>
@@ -465,7 +551,7 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, o
 
   if (!editable) {
     return (
-      <div className={`npb-section-frame${hasBg ? " has-bg" : ""}`} data-section={sid} data-cxc-sec={secCxc}>
+      <div className={`npb-section-frame${hasBg ? " has-bg" : ""}`} data-section={sid} data-cxc-sec={secCxc} style={frameStyle}>
         {scopedCss && <style>{scopedCss}</style>}
         {bg}
         {children}
@@ -474,11 +560,32 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, o
     );
   }
 
+  const startResize = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectSection(sid);
+    drag.current = { sy: event.clientY, base: Number(secO.minHeight) || Math.round(ref.current?.offsetHeight || 400) };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const moveResize = (event) => {
+    if (!drag.current) return;
+    setLiveH(Math.max(120, drag.current.base + (event.clientY - drag.current.sy)));
+  };
+  const endResize = (event) => {
+    if (!drag.current) return;
+    const next = Math.max(120, drag.current.base + (event.clientY - drag.current.sy));
+    drag.current = null;
+    setLiveH(null);
+    onSectionResize(sid, { minHeight: Math.round(next) });
+  };
+
   return (
     <div
+      ref={ref}
       className={`npb-section-frame is-editing${hasBg ? " has-bg" : ""}${selected ? " is-selected" : ""}`}
       data-section={sid}
       data-cxc-sec={secCxc}
+      style={frameStyle}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
       onPointerDown={() => onSelectSection(sid)}
@@ -501,6 +608,15 @@ function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, o
         </button>
       )}
       {(hover || selected) && <span className="npb-section-ring" aria-hidden="true" />}
+      {(hover || selected) && (
+        <span
+          className="npb-section-resize"
+          title="Drag to set section height"
+          onPointerDown={startResize}
+          onPointerMove={moveResize}
+          onPointerUp={endResize}
+        />
+      )}
     </div>
   );
 }
@@ -611,7 +727,9 @@ function Header({ content, editable, onChange, ...editorProps }) {
         ))}
       </nav>
       <a href={`tel:+1${content.nav.phone.replace(/\D/g, "")}`} className="npb-nav-phone">
-        <Phone size={17} />
+        <EditablePart path="nav.icon.phone" content={content} editable={editable} label="Icon" {...editorProps}>
+          <Phone size={17} />
+        </EditablePart>
         <EditableText path="nav.phone" content={content} editable={editable} onChange={onChange} {...editorProps} />
       </a>
     </header>
@@ -619,6 +737,11 @@ function Header({ content, editable, onChange, ...editorProps }) {
 }
 
 function Hero({ content, editable, onChange, ...editorProps }) {
+  const P = (path, label, node) => (
+    <EditablePart path={path} content={content} editable={editable} label={label} {...editorProps}>
+      {node}
+    </EditablePart>
+  );
   return (
     <section className="npb-hero">
       <div className="npb-hero-bg">
@@ -627,11 +750,11 @@ function Hero({ content, editable, onChange, ...editorProps }) {
       <motion.div className="npb-giant-name" aria-hidden="true">
         <EditableText path="hero.watermark" content={content} editable={editable} onChange={onChange} {...editorProps} />
       </motion.div>
-      <div className="npb-map-lines" aria-hidden="true" />
+      <EditableShape path="hero.mapLines" className="npb-map-lines" label="Map grid" content={content} editable={editable} {...editorProps} />
 
       <div className="npb-hero-copy">
         <motion.div className="npb-kicker" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-          <Sparkles size={16} />
+          {P("hero.icon.kicker", "Icon", <Sparkles size={16} />)}
           <EditableText path="hero.kicker" content={content} editable={editable} onChange={onChange} {...editorProps} />
         </motion.div>
         <h1>
@@ -646,26 +769,26 @@ function Hero({ content, editable, onChange, ...editorProps }) {
         <EditableText path="hero.body" content={content} editable={editable} onChange={onChange} as="p" {...editorProps} />
         <div className="npb-hero-actions">
           <a href={content.contact.bookingUrl} className="npb-primary">
-            <CalendarCheck size={18} />
+            {P("hero.icon.ctaPrimary", "Icon", <CalendarCheck size={18} />)}
             <EditableText path="hero.primaryCta" content={content} editable={editable} onChange={onChange} {...editorProps} />
-            <ArrowRight size={18} />
+            {P("hero.icon.ctaArrow", "Icon", <ArrowRight size={18} />)}
           </a>
           <a href="#identity" className="npb-secondary">
             <EditableText path="hero.secondaryCta" content={content} editable={editable} onChange={onChange} {...editorProps} />
-            <ChevronDown size={18} />
+            {P("hero.icon.ctaChevron", "Icon", <ChevronDown size={18} />)}
           </a>
         </div>
       </div>
 
       <motion.div className="npb-portrait-stage">
-        <div className="npb-red-mark" aria-hidden="true" />
+        <EditableShape path="hero.redMark" className="npb-red-mark" label="Red circle" content={content} editable={editable} {...editorProps} />
         <EditableImage path="hero.portraitImage" content={content} editable={editable} className="npb-hero-person" alt="Nirav Patel" {...editorProps} />
         <div className="npb-face-safe npb-credential-one">
-          <Award size={17} />
+          {P("hero.icon.badge1", "Icon", <Award size={17} />)}
           <EditableText path="hero.badge1" content={content} editable={editable} onChange={onChange} {...editorProps} />
         </div>
         <div className="npb-face-safe npb-credential-two">
-          <Building2 size={17} />
+          {P("hero.icon.badge2", "Icon", <Building2 size={17} />)}
           <EditableText path="hero.badge2" content={content} editable={editable} onChange={onChange} {...editorProps} />
         </div>
       </motion.div>
@@ -710,7 +833,9 @@ function Identity({ content, editable, onChange, ...editorProps }) {
           const Icon = icons[index] || Gem;
           return (
             <Reveal key={index} delay={index * 0.1} className="npb-principle">
-              <Icon size={28} />
+              <EditablePart path={`identity.cards.${index}.icon`} content={content} editable={editable} label="Icon" {...editorProps}>
+                <Icon size={28} />
+              </EditablePart>
               <EditableText path={`identity.cards.${index}.title`} content={content} editable={editable} onChange={onChange} as="h3" {...editorProps} />
               <EditableText path={`identity.cards.${index}.body`} content={content} editable={editable} onChange={onChange} as="p" {...editorProps} />
             </Reveal>
@@ -728,7 +853,9 @@ function Proof({ content, editable, onChange, ...editorProps }) {
         const Icon = statIcons[index] || StarIcon;
         return (
           <Reveal key={index} delay={index * 0.08} className="npb-proof-card">
-            <Icon size={24} />
+            <EditablePart path={`proof.stats.${index}.icon`} content={content} editable={editable} label="Icon" {...editorProps}>
+              <Icon size={24} />
+            </EditablePart>
             <strong>
               {editable ? (
                 <>
@@ -762,7 +889,9 @@ function Editorial({ content, editable, onChange, ...editorProps }) {
         <ul>
           {content.editorial.bullets.map((_, index) => (
             <li key={index}>
-              <CheckCircle2 size={18} />
+              <EditablePart path={`editorial.bullets.${index}.icon`} content={content} editable={editable} label="Icon" {...editorProps}>
+                <CheckCircle2 size={18} />
+              </EditablePart>
               <EditableText path={`editorial.bullets.${index}`} content={content} editable={editable} onChange={onChange} {...editorProps} />
             </li>
           ))}
@@ -793,7 +922,9 @@ function Gallery({ content, editable, onChange, ...editorProps }) {
               {...editorProps}
             />
             <figcaption>
-              <KeyRound size={15} />
+              <EditablePart path={`gallery.images.${index}.icon`} content={content} editable={editable} label="Icon" {...editorProps}>
+                <KeyRound size={15} />
+              </EditablePart>
               <EditableText path="gallery.caption" content={content} editable={editable} onChange={onChange} {...editorProps} />
             </figcaption>
           </motion.figure>
@@ -815,7 +946,9 @@ function Method({ content, editable, onChange, ...editorProps }) {
       <div className="npb-method-list">
         {content.method.steps.map((_, index) => (
           <Reveal key={index} delay={index * 0.07} className="npb-method-step">
-            <span>{String(index + 1).padStart(2, "0")}</span>
+            <EditablePart path={`method.steps.${index}.num`} content={content} editable={editable} label="Number" {...editorProps}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+            </EditablePart>
             <EditableText path={`method.steps.${index}`} content={content} editable={editable} onChange={onChange} as="h3" {...editorProps} />
           </Reveal>
         ))}
@@ -838,12 +971,18 @@ function Contact({ content, editable, onChange, ...editorProps }) {
         <EditableText path="contact.body" content={content} editable={editable} onChange={onChange} as="p" {...editorProps} />
         <div className="npb-contact-actions">
           <a href={content.contact.bookingUrl} className="npb-primary npb-light-btn">
-            <CalendarCheck size={18} />
+            <EditablePart path="contact.icon.cta" content={content} editable={editable} label="Icon" {...editorProps}>
+              <CalendarCheck size={18} />
+            </EditablePart>
             <EditableText path="contact.primaryCta" content={content} editable={editable} onChange={onChange} {...editorProps} />
-            <ArrowRight size={18} />
+            <EditablePart path="contact.icon.arrow" content={content} editable={editable} label="Icon" {...editorProps}>
+              <ArrowRight size={18} />
+            </EditablePart>
           </a>
           <a href={`tel:+1${content.contact.phone.replace(/\D/g, "")}`} className="npb-phone-link">
-            <Phone size={18} />
+            <EditablePart path="contact.icon.phone" content={content} editable={editable} label="Icon" {...editorProps}>
+              <Phone size={18} />
+            </EditablePart>
             <EditableText path="contact.phone" content={content} editable={editable} onChange={onChange} {...editorProps} />
           </a>
         </div>
@@ -860,7 +999,9 @@ function Footer({ content, editable, onChange, ...editorProps }) {
         <EditableText path="footer.line" content={content} editable={editable} onChange={onChange} {...editorProps} />
       </div>
       <a href={`mailto:${content.footer.email}`}>
-        <Mail size={18} />
+        <EditablePart path="footer.icon.mail" content={content} editable={editable} label="Icon" {...editorProps}>
+          <Mail size={18} />
+        </EditablePart>
         <EditableText path="footer.email" content={content} editable={editable} onChange={onChange} {...editorProps} />
       </a>
     </footer>

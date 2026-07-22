@@ -330,7 +330,8 @@ select {
 }
 
 /* an override background takes over the section's own background */
-.npb-section-frame.has-bg > section {
+.npb-section-frame.has-bg > section,
+.npb-section-frame.has-bg > footer {
   background: transparent !important;
 }
 
@@ -2315,4 +2316,48 @@ select {
 
 .cms-hidden-note button:hover {
   background: #ea6a00;
+}
+
+/* ── section resize handle + wrapped decorative parts/shapes ── */
+.npb-section-resize {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 21;
+  width: 64px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  background: #ff7a00;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.4);
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.npb-part {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* a wrapped decorative shape keeps its own class for look/size/position */
+.npb-site-editing .npb-shape {
+  pointer-events: auto;
+}
+
+/* make hero background decorative layers reachable/selectable while editing
+   (they sit behind content on the live site; here they float just enough to be
+   clicked in the hero's empty regions without covering the copy/portrait). */
+.npb-site-editing .npb-map-lines,
+.npb-site-editing .npb-giant-name {
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.npb-site-editing .npb-hero-bg {
+  z-index: 0;
+}
+
+.npb-site-editing .npb-hero-bg > .cms-canvas-element {
+  pointer-events: auto;
 }

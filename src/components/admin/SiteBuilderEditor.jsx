@@ -552,6 +552,7 @@ export default function SiteBuilderEditor() {
                 onDesign={updateElementDesign}
                 onReset={resetElement}
                 onSelectSection={selectSection}
+                onSectionResize={updateSection}
                 onAddCanvasElement={addCanvasEl}
                 onRemoveCanvasElement={removeCanvasEl}
                 onRemoveFreeItem={removeFreeEl}
@@ -620,6 +621,12 @@ function SectionBgControls({ sid, override, onChange, onClear, onUpload, uploadi
             clear
           </button>
         </div>
+      </div>
+
+      {/* section resize: min-height + vertical padding */}
+      <div className="cms-style-grid">
+        <label><span>Min height</span><input type="number" value={override.minHeight ?? ""} placeholder="px" onChange={(e) => onChange({ minHeight: e.target.value === "" ? "" : Number(e.target.value) })} /></label>
+        <label><span>Padding Y</span><input type="number" value={override.padding ?? ""} placeholder="px" onChange={(e) => onChange({ padding: e.target.value === "" ? "" : Number(e.target.value) })} /></label>
       </div>
 
       <div className="cms-style-grid">
