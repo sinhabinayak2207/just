@@ -36,7 +36,11 @@ export async function readContentRow() {
   });
 
   if (!response.ok) {
-    throw new Error(await supabaseError(response, "Could not read site_content."));
+    const message = await supabaseError(response, "Could not read site_content.");
+    if (/site_content|schema cache|PGRST205/i.test(message)) {
+      throw new Error("Supabase table missing. Run supabase.sql in Supabase SQL Editor, then reload the CMS.");
+    }
+    throw new Error(message);
   }
 
   const rows = await response.json();
@@ -69,7 +73,11 @@ export async function upsertContentRow(content) {
   });
 
   if (!response.ok) {
-    throw new Error(await supabaseError(response, "Could not save site_content."));
+    const message = await supabaseError(response, "Could not save site_content.");
+    if (/site_content|schema cache|PGRST205/i.test(message)) {
+      throw new Error("Supabase table missing. Run supabase.sql in Supabase SQL Editor, then reload the CMS.");
+    }
+    throw new Error(message);
   }
 
   const rows = await response.json();

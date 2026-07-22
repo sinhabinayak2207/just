@@ -9,7 +9,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -72,6 +73,115 @@ textarea {
 .cms-editable-text:focus {
   outline: 2px solid #ed1b34;
   background: rgba(237, 27, 52, 0.12);
+}
+
+.cms-canvas-element {
+  position: relative;
+  vertical-align: baseline;
+  cursor: default;
+  touch-action: none;
+}
+
+.cms-canvas-element.is-selected {
+  outline: 2px solid #ed1b34;
+  outline-offset: 5px;
+  box-shadow: 0 0 0 9999px rgba(237, 27, 52, 0.015);
+}
+
+.cms-element-handle {
+  position: absolute;
+  z-index: 30;
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  background: #ed1b34;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.cms-element-drag {
+  top: 0;
+  right: 0;
+  width: 44px;
+  height: 16px;
+  border-radius: 999px;
+  cursor: grab;
+  transform: translate(50%, -50%);
+}
+
+.cms-element-drag:active {
+  cursor: grabbing;
+}
+
+.cms-element-resize {
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  cursor: nwse-resize;
+  transform: translate(50%, 50%);
+}
+
+.cms-element-resize::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-right: 2px solid white;
+  border-bottom: 2px solid white;
+}
+
+.cms-canvas-element img {
+  max-width: 100%;
+}
+
+.npb-site-editing .cms-canvas-element {
+  pointer-events: auto;
+}
+
+.npb-site-editing .npb-hero,
+.npb-site-editing .npb-hero h1 > span,
+.npb-site-editing .npb-hero h1 > span > span,
+.npb-site-editing .npb-section-head,
+.npb-site-editing .npb-principle,
+.npb-site-editing .npb-proof-card,
+.npb-site-editing .npb-method-step,
+.npb-site-editing .npb-footer {
+  overflow: visible;
+}
+
+.npb-site-editing .npb-portrait-stage {
+  pointer-events: auto;
+}
+
+.npb-site-editing .npb-hero-bg > .cms-canvas-element,
+.npb-site-editing .npb-editorial-image > .cms-canvas-element,
+.npb-site-editing .npb-contact-image > .cms-canvas-element,
+.npb-site-editing .npb-gallery-card > .cms-canvas-element {
+  display: block !important;
+  width: 100%;
+  height: 100%;
+}
+
+.npb-site-editing .npb-portrait-stage > .cms-canvas-element {
+  position: absolute !important;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+}
+
+.npb-site-editing .npb-portrait-stage > .cms-canvas-element .npb-hero-person {
+  position: static;
+  width: 100%;
+  height: 100%;
+}
+
+.npb-site-editing .npb-hero-bg > .cms-canvas-element img,
+.npb-site-editing .npb-editorial-image > .cms-canvas-element img,
+.npb-site-editing .npb-contact-image > .cms-canvas-element img,
+.npb-site-editing .npb-gallery-card > .cms-canvas-element img {
+  width: 100%;
+  height: 100%;
 }
 
 .npb-nav {
@@ -929,6 +1039,101 @@ textarea {
   gap: 8px;
 }
 
+.cms-selected-path {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(237, 27, 52, 0.32);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(237, 27, 52, 0.12);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cms-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cms-selected-asset {
+  display: grid;
+  gap: 9px;
+}
+
+.cms-selected-asset img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #202020;
+}
+
+.cms-style-grid label {
+  display: grid;
+  gap: 5px;
+}
+
+.cms-style-grid label > span {
+  color: rgba(255, 255, 255, 0.58);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.cms-style-grid input,
+.cms-style-grid select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 6px;
+  color: white;
+  background: rgba(0, 0, 0, 0.28);
+  padding: 0 9px;
+}
+
+.cms-layer-list {
+  display: grid;
+  gap: 6px;
+  max-height: 230px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.cms-layer-list button {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.045);
+  padding: 0 9px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cms-layer-list button.is-active {
+  border-color: rgba(237, 27, 52, 0.8);
+  color: white;
+  background: rgba(237, 27, 52, 0.16);
+}
+
+.cms-layer-list button > span {
+  color: #ed1b34;
+  font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .cms-section-list button,
 .cms-actions button,
 .cms-actions a,
@@ -1094,10 +1299,6 @@ textarea {
   text-transform: uppercase;
 }
 
-.cms-canvas .npb-nav {
-  top: 66px;
-}
-
 .cms-canvas .cms-open-button {
   display: none;
 }
@@ -1110,9 +1311,5 @@ textarea {
   .cms-sidebar {
     position: relative;
     height: auto;
-  }
-
-  .cms-canvas .npb-nav {
-    top: 12px;
   }
 }

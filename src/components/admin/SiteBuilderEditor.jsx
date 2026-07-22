@@ -6,13 +6,17 @@ import {
   DEFAULT_CONTENT,
   SECTIONS,
   characterMap,
+  clearElementOverride,
+  getElementOverride,
   getByPath,
   getSectionFields,
+  listContentFields,
   loadContent,
   loadContentFromApi,
   resolveContent,
   saveContent,
   saveContentToApi,
+  setElementOverride,
   setByPath,
   uploadAssetToApi,
 } from "../../lib/siteContent";
@@ -29,10 +33,14 @@ export default function SiteBuilderEditor() {
   const [status, setStatus] = useState("Loading Supabase content...");
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingPath, setUploadingPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState("hero.line1");
   const fields = useMemo(() => getSectionFields(activeSection, content), [activeSection, content]);
+  const allFields = useMemo(() => listContentFields(content), [content]);
   const textFields = fields.filter((field) => field.type === "text");
   const assetFields = fields.filter((field) => field.type === "asset");
   const chars = useMemo(() => characterMap(content), [content]);
+  const selectedField = allFields.find((field) => field.path === selectedPath);
+  const selectedOverride = selectedPath ? getElementOverride(content, selectedPath) : {};
 
   useEffect(() => {
     let mounted = true;
@@ -60,6 +68,40 @@ export default function SiteBuilderEditor() {
       setJsonDraft(JSON.stringify(next, null, 2));
       return next;
     });
+  };
+
+  const selectElement = (path) => {
+    setSelectedPath(path);
+    const sectionId = path.split(".")[0];
+    if (SECTIONS.some((section) => section.id === sectionId)) {
+      setActiveSection(sectionId);
+    }
+  };
+
+  const updateElementDesign = (path, patch) => {
+    if (!path) return;
+    setContent((current) => {
+      const next = setElementOverride(current, path, patch);
+      setJsonDraft(JSON.stringify(next, null, 2));
+      return next;
+    });
+  };
+
+  const resetElementDesign = () => {
+    if (!selectedPath) return;
+    setContent((current) => {
+      const next = clearElementOverride(current, selectedPath);
+      setJsonDraft(JSON.stringify(next, null, 2));
+      return next;
+    });
+  };
+
+  const updateSelectedNumber = (key, value) => {
+    updateElementDesign(selectedPath, { [key]: value === "" ? "" : Number(value) });
+  };
+
+  const updateSelectedText = (key, value) => {
+    updateElementDesign(selectedPath, { [key]: value });
   };
 
   const handleUnlock = () => {
@@ -194,6 +236,129 @@ export default function SiteBuilderEditor() {
           </div>
         </div>
 
+        <div className="cms-panel-group cms-style-panel">
+          <h3>Selected Element</h3>
+          {selectedField ? (
+            <>
+              <p className="cms-selected-path">{selectedField.path}</p>
+              {selectedField.type === "asset" && (
+                <div className="cms-selected-asset">
+                  <img src={String(getByPath(content, selectedField.path) || "")} alt="" />
+                  <label className="cms-field">
+                    <span>Image URL</span>
+                    <input
+                      value={String(getByPath(content, selectedField.path) || "")}
+                      onChange={(event) => updateField(selectedField.path, event.target.value)}
+                    />
+                  </label>
+                  <span className="cms-file-control">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) handleAssetUpload(selectedField.path, file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <strong>{uploadingPath === selectedField.path ? "Uploading..." : "Replace selected image"}</strong>
+                  </span>
+                </div>
+              )}
+              <div className="cms-style-grid">
+                <label>
+                  <span>X</span>
+                  <input type="number" value={selectedOverride.x ?? ""} onChange={(event) => updateSelectedNumber("x", event.target.value)} />
+                </label>
+                <label>
+                  <span>Y</span>
+                  <input type="number" value={selectedOverride.y ?? ""} onChange={(event) => updateSelectedNumber("y", event.target.value)} />
+                </label>
+                <label>
+                  <span>W</span>
+                  <input type="number" value={selectedOverride.w ?? ""} onChange={(event) => updateSelectedNumber("w", event.target.value)} />
+                </label>
+                <label>
+                  <span>H</span>
+                  <input type="number" value={selectedOverride.h ?? ""} onChange={(event) => updateSelectedNumber("h", event.target.value)} />
+                </label>
+                <label>
+                  <span>Font</span>
+                  <input
+                    type="number"
+                    value={selectedOverride.fontSize ?? ""}
+                    onChange={(event) => updateSelectedNumber("fontSize", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Z</span>
+                  <input type="number" value={selectedOverride.zIndex ?? ""} onChange={(event) => updateSelectedNumber("zIndex", event.target.value)} />
+                </label>
+                <label>
+                  <span>Radius</span>
+                  <input type="number" value={selectedOverride.radius ?? ""} onChange={(event) => updateSelectedNumber("radius", event.target.value)} />
+                </label>
+                <label>
+                  <span>Pad</span>
+                  <input type="number" value={selectedOverride.padding ?? ""} onChange={(event) => updateSelectedNumber("padding", event.target.value)} />
+                </label>
+                <label>
+                  <span>Color</span>
+                  <input value={selectedOverride.color ?? ""} placeholder="#ffffff" onChange={(event) => updateSelectedText("color", event.target.value)} />
+                </label>
+                <label>
+                  <span>BG</span>
+                  <input
+                    value={selectedOverride.background ?? ""}
+                    placeholder="transparent"
+                    onChange={(event) => updateSelectedText("background", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Opacity</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={selectedOverride.opacity ?? ""}
+                    onChange={(event) => updateSelectedNumber("opacity", event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>Fit</span>
+                  <select value={selectedOverride.objectFit ?? ""} onChange={(event) => updateSelectedText("objectFit", event.target.value)}>
+                    <option value="">auto</option>
+                    <option value="cover">cover</option>
+                    <option value="contain">contain</option>
+                    <option value="fill">fill</option>
+                  </select>
+                </label>
+              </div>
+              <button type="button" onClick={resetElementDesign}>Reset Selected Style</button>
+            </>
+          ) : (
+            <p className="cms-muted">Click any mapped text or image on the canvas.</p>
+          )}
+        </div>
+
+        <div className="cms-panel-group">
+          <h3>Layers</h3>
+          <div className="cms-layer-list">
+            {fields.map((field) => (
+              <button
+                key={field.path}
+                type="button"
+                className={selectedPath === field.path ? "is-active" : ""}
+                onClick={() => selectElement(field.path)}
+              >
+                <span>{field.type}</span>
+                {field.path}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="cms-panel-group">
           <h3>Text Fields</h3>
           {textFields.map((field) => (
@@ -244,7 +409,17 @@ export default function SiteBuilderEditor() {
           <span>Canvas editor</span>
           <strong>{activeSection}</strong>
         </div>
-        <LandingSections content={content} editable onChange={updateField} showCmsButton={false} />
+        <LandingSections
+          content={content}
+          editable
+          onChange={updateField}
+          showCmsButton={false}
+          showHeader={false}
+          selectedPath={selectedPath}
+          onSelect={selectElement}
+          onMove={updateElementDesign}
+          onResize={updateElementDesign}
+        />
       </section>
     </div>
   );

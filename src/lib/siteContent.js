@@ -16,6 +16,9 @@ export const DEFAULT_ORDER = [
 const media = (file) => `https://niravpatel.ca/_assets/media/${file}`;
 
 export const DEFAULT_CONTENT = {
+  design: {
+    elements: {},
+  },
   nav: {
     brandName: "Nirav Patel",
     brandRole: "Realtor",
@@ -186,6 +189,68 @@ export function setByPath(object, path, value) {
   return next;
 }
 
+export function encodeElementPath(path) {
+  return String(path).replace(/[^a-zA-Z0-9_-]/g, "__");
+}
+
+export function getElementOverride(content, path) {
+  const key = encodeElementPath(path);
+  return content?.design?.elements?.[key] || {};
+}
+
+export function setElementOverride(content, path, patch) {
+  const next = deepClone(content);
+  const key = encodeElementPath(path);
+  if (!next.design) next.design = {};
+  if (!next.design.elements) next.design.elements = {};
+
+  const previous = next.design.elements[key] || { path };
+  next.design.elements[key] = cleanOverride({
+    ...previous,
+    path,
+    ...patch,
+  });
+
+  return next;
+}
+
+export function clearElementOverride(content, path) {
+  const next = deepClone(content);
+  const key = encodeElementPath(path);
+  if (next.design?.elements) delete next.design.elements[key];
+  return next;
+}
+
+export function buildElementStyle(content, path, editable = false) {
+  const override = getElementOverride(content, path);
+  const style = {};
+
+  if (override.x || override.y) {
+    style.transform = `translate(${Number(override.x) || 0}px, ${Number(override.y) || 0}px)`;
+  }
+  if (override.w) style.width = `${Number(override.w)}px`;
+  if (override.h) style.height = `${Number(override.h)}px`;
+  if (override.color) style.color = override.color;
+  if (override.background) style.background = override.background;
+  if (override.fontSize) style.fontSize = `${Number(override.fontSize)}px`;
+  if (override.radius) style.borderRadius = `${Number(override.radius)}px`;
+  if (override.padding) style.padding = `${Number(override.padding)}px`;
+  if (override.opacity) style.opacity = Number(override.opacity);
+  if (override.zIndex) style.zIndex = Number(override.zIndex);
+  if (override.objectFit) style.objectFit = override.objectFit;
+
+  if (Object.keys(style).length || editable) {
+    style.position = "relative";
+    style.display = override.display || "inline-block";
+  }
+
+  if (override.h) {
+    style.overflow = "hidden";
+  }
+
+  return style;
+}
+
 export function listContentFields(content = DEFAULT_CONTENT) {
   const fields = [];
   walk(content, "", fields);
@@ -193,6 +258,8 @@ export function listContentFields(content = DEFAULT_CONTENT) {
 }
 
 function walk(value, path, fields) {
+  if (path === "design" || path.startsWith("design.")) return;
+
   if (typeof value === "string") {
     fields.push({ path, type: isAssetPath(path, value) ? "asset" : "text", value });
     return;
@@ -226,6 +293,12 @@ export function characterMap(content = DEFAULT_CONTENT) {
         code: char.codePointAt(0),
       })),
     );
+}
+
+function cleanOverride(override) {
+  return Object.fromEntries(
+    Object.entries(override).filter(([, value]) => value !== "" && value !== null && value !== undefined),
+  );
 }
 
 export function loadContent() {
