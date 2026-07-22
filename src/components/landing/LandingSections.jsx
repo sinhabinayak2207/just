@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import React from "react";
+import React, { useRef, useState } from "react";
 import {
   ArrowRight,
   Award,
@@ -11,14 +11,27 @@ import {
   Gem,
   Handshake,
   Home,
+  Image as ImageIcon,
   KeyRound,
   Mail,
+  Move,
   Phone,
   ShieldCheck,
   Sparkles,
   Target,
+  Trash2,
+  Type as TypeIcon,
 } from "lucide-react";
-import { buildElementStyle, DEFAULT_ORDER, getByPath, getElementOverride } from "../../lib/siteContent";
+import {
+  buildElementStyle,
+  buildSectionBackground,
+  getByPath,
+  getCustomSection,
+  getElementOverride,
+  getSectionOrder,
+  isCustomSectionId,
+  sectionLabel,
+} from "../../lib/siteContent";
 import { Counter, Reveal } from "./motion";
 
 const icons = [Building2, Target, Gem];
@@ -26,120 +39,203 @@ const statIcons = [Home, Handshake, Clock3, ShieldCheck];
 
 const blockTags = new Set(["p", "h1", "h2", "h3", "h4", "div"]);
 
-function EditableFrame({ path, content, editable, selectedPath, onSelect, onMove, onResize, children, block = false }) {
+// Short human label for an element's move chip, derived from its path.
+function elementLabel(path) {
+  const parts = String(path).split(".");
+  let last = parts[parts.length - 1];
+  if (last === "value" && parts.length >= 2) last = "element";
+  return last.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^\w/, (c) => c.toUpperCase());
+}
+
+// A compact floating style popover (precise X/Y/W/H + core style) — the heavy
+// controls, reachable straight from the on-canvas selection.
+function ElementStylePopover({ override, onDesign, onReset, path }) {
+  const num = (key) => (override[key] ?? "");
+  const set = (key, value, asNumber = true) =>
+    onDesign(path, { [key]: value === "" ? "" : asNumber ? Number(value) : value });
+  return (
+    <div className="cms-el-pop" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="cms-el-pop-head">Style</div>
+      <div className="cms-el-pop-grid">
+        <label><span>X</span><input type="number" value={num("x")} onChange={(e) => set("x", e.target.value)} /></label>
+        <label><span>Y</span><input type="number" value={num("y")} onChange={(e) => set("y", e.target.value)} /></label>
+        <label><span>W</span><input type="number" value={num("w")} onChange={(e) => set("w", e.target.value)} /></label>
+        <label><span>H</span><input type="number" value={num("h")} onChange={(e) => set("h", e.target.value)} /></label>
+        <label><span>Font</span><input type="number" value={num("fontSize")} onChange={(e) => set("fontSize", e.target.value)} /></label>
+        <label><span>Radius</span><input type="number" value={num("radius")} onChange={(e) => set("radius", e.target.value)} /></label>
+        <label><span>Pad</span><input type="number" value={num("padding")} onChange={(e) => set("padding", e.target.value)} /></label>
+        <label><span>Z</span><input type="number" value={num("zIndex")} onChange={(e) => set("zIndex", e.target.value)} /></label>
+        <label><span>Opacity</span><input type="number" min="0" max="1" step="0.05" value={num("opacity")} onChange={(e) => set("opacity", e.target.value)} /></label>
+        <label><span>Fit</span>
+          <select value={override.objectFit ?? ""} onChange={(e) => set("objectFit", e.target.value, false)}>
+            <option value="">auto</option>
+            <option value="cover">cover</option>
+            <option value="contain">contain</option>
+            <option value="fill">fill</option>
+          </select>
+        </label>
+      </div>
+      <button type="button" className="cms-el-pop-reset" onClick={() => onReset(path)}>Reset element</button>
+    </div>
+  );
+}
+
+// Framer-like editing wrapper: a thin NON-blocking selection ring, a small
+// floating move chip + resize handle, and a compact colour/style toolbar. The
+// content stays fully clickable so inline text editing is never blocked.
+function EditableFrame({
+  path,
+  content,
+  editable,
+  selectedPath,
+  onSelect = () => {},
+  onMove = () => {},
+  onResize = () => {},
+  onDesign = () => {},
+  onReset = () => {},
+  children,
+  block = false,
+  label,
+}) {
   const selected = editable && selectedPath === path;
+  const ref = useRef(null);
+  const drag = useRef(null);
+  const [hover, setHover] = useState(false);
+  const [live, setLive] = useState(null); // { x, y } | { w, h }
+  const [panel, setPanel] = useState(false);
 
   if (!editable) return children;
 
-  const startInteraction = (event, mode) => {
+  const override = getElementOverride(content, path);
+  const show = hover || selected;
+  const chipLabel = label || elementLabel(path);
+
+  const style = buildElementStyle(content, path, true);
+  style.display = override.display || (block ? "block" : "inline-block");
+  if (live) {
+    if (live.x != null) style.transform = `translate(${live.x}px, ${live.y}px)`;
+    if (live.w != null) {
+      style.width = `${live.w}px`;
+      style.height = `${live.h}px`;
+      style.overflow = "hidden";
+    }
+  }
+
+  const down = (event, mode) => {
     event.preventDefault();
     event.stopPropagation();
-
-    const frame = event.currentTarget.closest("[data-cms-frame]");
-    const rect = frame?.getBoundingClientRect();
-    const override = getElementOverride(content, path);
-    const startX = event.clientX;
-    const startY = event.clientY;
-    const start = {
-      x: Number(override.x) || 0,
-      y: Number(override.y) || 0,
-      w: Number(override.w) || Math.round(rect?.width || 160),
-      h: Number(override.h) || Math.round(rect?.height || 44),
-    };
-
     onSelect(path);
-
-    const move = (moveEvent) => {
-      const dx = Math.round(moveEvent.clientX - startX);
-      const dy = Math.round(moveEvent.clientY - startY);
-
-      if (mode === "move") {
-        onMove(path, { x: start.x + dx, y: start.y + dy });
-      } else {
-        onResize(path, {
-          w: Math.max(24, start.w + dx),
-          h: Math.max(18, start.h + dy),
-        });
-      }
+    const el = ref.current;
+    drag.current = {
+      mode,
+      sx: event.clientX,
+      sy: event.clientY,
+      ox: Number(override.x) || 0,
+      oy: Number(override.y) || 0,
+      ow: Number(override.w) || Math.round(el?.offsetWidth || 160),
+      oh: Number(override.h) || Math.round(el?.offsetHeight || 44),
     };
-
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", stop);
-    };
-
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", stop);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const move = (event) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = event.clientX - d.sx;
+    const dy = event.clientY - d.sy;
+    if (d.mode === "move") setLive({ x: d.ox + dx, y: d.oy + dy });
+    else setLive({ w: Math.max(24, d.ow + dx), h: Math.max(18, d.oh + dy) });
+  };
+  const up = (event) => {
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    const dx = event.clientX - d.sx;
+    const dy = event.clientY - d.sy;
+    if (d.mode === "move") onMove(path, { x: Math.round(d.ox + dx), y: Math.round(d.oy + dy) });
+    else onResize(path, { w: Math.round(Math.max(24, d.ow + dx)), h: Math.round(Math.max(18, d.oh + dy)) });
+    setLive(null);
   };
 
   const Wrapper = block ? "div" : "span";
 
   return (
     <Wrapper
+      ref={ref}
       className={`cms-canvas-element${selected ? " is-selected" : ""}`}
       data-cms-frame={path}
-      style={buildElementStyle(content, path, true)}
+      style={style}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
       onPointerDown={(event) => {
         event.stopPropagation();
         onSelect(path);
       }}
     >
       {children}
+
+      {show && (
+        <span className={`cms-el-ring${selected ? " is-selected" : ""}`} aria-hidden="true" />
+      )}
+
+      {show && (
+        <span
+          className="cms-el-chip"
+          onPointerDown={(event) => down(event, "move")}
+          onPointerMove={move}
+          onPointerUp={up}
+        >
+          <Move size={11} strokeWidth={2.5} />
+          {chipLabel}
+        </span>
+      )}
+
       {selected && (
-        <>
-          <span
-            className="cms-element-handle cms-element-drag"
-            aria-label="Drag element"
-            role="button"
-            tabIndex={0}
-            onPointerDown={(event) => startInteraction(event, "move")}
-            onMouseDown={(event) => startInteraction(event, "move")}
-          />
-          <span
-            className="cms-element-handle cms-element-resize"
-            aria-label="Resize element"
-            role="button"
-            tabIndex={0}
-            onPointerDown={(event) => startInteraction(event, "resize")}
-            onMouseDown={(event) => startInteraction(event, "resize")}
-          />
-        </>
+        <span
+          className="cms-el-resize"
+          onPointerDown={(event) => down(event, "resize")}
+          onPointerMove={move}
+          onPointerUp={up}
+        />
+      )}
+
+      {selected && (
+        <div className="cms-el-toolbar" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            title="Size, spacing & position"
+            className={panel ? "is-on" : ""}
+            onClick={() => setPanel((v) => !v)}
+          >
+            Aa
+          </button>
+          <span className="cms-el-sep" />
+          <label className="cms-el-swatch" title="Text colour">
+            A
+            <span className="cms-el-swatch-bar" style={{ background: override.color || "#ffffff" }} />
+            <input type="color" value={override.color || "#ffffff"} onChange={(e) => onDesign(path, { color: e.target.value })} />
+          </label>
+          <label className="cms-el-swatch is-bg" title="Background colour" style={{ background: override.background || "transparent" }}>
+            BG
+            <input type="color" value={override.background || "#111111"} onChange={(e) => onDesign(path, { background: e.target.value })} />
+          </label>
+          <button type="button" title="Clear colours" onClick={() => onDesign(path, { color: "", background: "" })}>⌫</button>
+        </div>
+      )}
+
+      {selected && panel && (
+        <ElementStylePopover override={override} onDesign={onDesign} onReset={onReset} path={path} />
       )}
     </Wrapper>
   );
 }
 
-function EditableText({
-  path,
-  content,
-  editable,
-  onChange,
-  selectedPath = "",
-  onSelect = () => {},
-  onMove = () => {},
-  onResize = () => {},
-  as = "span",
-  className = "",
-}) {
+function EditableText({ path, content, editable, onChange = () => {}, as = "span", className = "", ...frame }) {
   const Tag = as;
   const value = String(getByPath(content, path) ?? "");
   if (!editable) return <Tag className={className} style={buildElementStyle(content, path)}>{value}</Tag>;
 
   return (
-    <EditableFrame
-      path={path}
-      content={content}
-      editable={editable}
-      selectedPath={selectedPath}
-      onSelect={onSelect}
-      onMove={onMove}
-      onResize={onResize}
-      block={blockTags.has(as)}
-    >
+    <EditableFrame path={path} content={content} editable={editable} block={blockTags.has(as)} {...frame}>
       <Tag
         className={`${className} cms-editable-text`}
         contentEditable
@@ -153,17 +249,7 @@ function EditableText({
   );
 }
 
-function EditableImage({
-  path,
-  content,
-  editable,
-  selectedPath = "",
-  onSelect = () => {},
-  onMove = () => {},
-  onResize = () => {},
-  className = "",
-  alt = "",
-}) {
+function EditableImage({ path, content, editable, className = "", alt = "", block = false, ...frame }) {
   const image = (
     <img
       src={String(getByPath(content, path) || "")}
@@ -177,15 +263,7 @@ function EditableImage({
   if (!editable) return image;
 
   return (
-    <EditableFrame
-      path={path}
-      content={content}
-      editable={editable}
-      selectedPath={selectedPath}
-      onSelect={onSelect}
-      onMove={onMove}
-      onResize={onResize}
-    >
+    <EditableFrame path={path} content={content} editable={editable} block={block} {...frame}>
       {image}
     </EditableFrame>
   );
@@ -201,8 +279,16 @@ export default function LandingSections({
   onSelect = () => {},
   onMove = () => {},
   onResize = () => {},
+  onDesign = () => {},
+  onReset = () => {},
+  onSelectSection = () => {},
+  onAddCanvasElement = () => {},
+  onRemoveCanvasElement = () => {},
 }) {
-  const editorProps = { selectedPath, onSelect, onMove, onResize };
+  const editorProps = { selectedPath, onSelect, onMove, onResize, onDesign, onReset };
+  const sectionApi = { editable, selectedPath, onSelectSection };
+  const order = getSectionOrder(content);
+
   return (
     <div className={`npb-site${editable ? " npb-site-editing" : ""}`}>
       {showCmsButton && (
@@ -212,12 +298,138 @@ export default function LandingSections({
       )}
       {showHeader && <Header content={content} editable={editable} onChange={onChange} {...editorProps} />}
       <main id="top">
-        {DEFAULT_ORDER.map((section) => {
+        {order.map((section) => {
           const Component = sectionComponents[section];
-          return Component ? <Component key={section} content={content} editable={editable} onChange={onChange} {...editorProps} /> : null;
+          if (Component) {
+            return (
+              <SectionFrame key={section} sid={section} content={content} {...sectionApi}>
+                <Component content={content} editable={editable} onChange={onChange} {...editorProps} />
+              </SectionFrame>
+            );
+          }
+          if (isCustomSectionId(section)) {
+            return (
+              <SectionFrame key={section} sid={section} content={content} {...sectionApi}>
+                <CustomSection
+                  sid={section}
+                  content={content}
+                  editable={editable}
+                  onChange={onChange}
+                  onAddCanvasElement={onAddCanvasElement}
+                  onRemoveCanvasElement={onRemoveCanvasElement}
+                  {...editorProps}
+                />
+              </SectionFrame>
+            );
+          }
+          return null;
         })}
       </main>
     </div>
+  );
+}
+
+// Wraps a section so it can carry a per-section background (colour / gradient /
+// image + overlay) and be selected on the canvas by clicking its empty area.
+function SectionFrame({ sid, content, editable, selectedPath, onSelectSection, children }) {
+  const [hover, setHover] = useState(false);
+  const { hasBg, layerStyle, overlayStyle } = buildSectionBackground(content, sid);
+  const selected = editable && selectedPath === `section:${sid}`;
+
+  const bg = hasBg ? (
+    <>
+      {Object.keys(layerStyle).length > 0 && <div className="npb-section-bg" style={layerStyle} aria-hidden="true" />}
+      {overlayStyle && <div className="npb-section-overlay" style={overlayStyle} aria-hidden="true" />}
+    </>
+  ) : null;
+
+  if (!editable) {
+    return (
+      <div className={`npb-section-frame${hasBg ? " has-bg" : ""}`} data-section={sid}>
+        {bg}
+        {children}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`npb-section-frame is-editing${hasBg ? " has-bg" : ""}${selected ? " is-selected" : ""}`}
+      data-section={sid}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      onPointerDown={() => onSelectSection(sid)}
+    >
+      {bg}
+      {children}
+      {(hover || selected) && (
+        <button
+          type="button"
+          className="npb-section-chip"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            onSelectSection(sid);
+          }}
+        >
+          <Move size={11} strokeWidth={2.5} />
+          {sectionLabel(sid)}
+        </button>
+      )}
+      {(hover || selected) && <span className="npb-section-ring" aria-hidden="true" />}
+    </div>
+  );
+}
+
+// A blank positioned canvas: users add free TEXT / IMAGE elements, each fully
+// move / resize / colour / style editable like every other element.
+function CustomSection({ sid, content, editable, onChange, onAddCanvasElement, onRemoveCanvasElement, ...editorProps }) {
+  const section = getCustomSection(content, sid);
+  const base = `customSections.${sid}.items`;
+
+  return (
+    <section className="npb-custom-section" style={{ minHeight: `${section.height}px` }}>
+      {editable && (
+        <div className="npb-custom-toolbar" onPointerDown={(e) => e.stopPropagation()}>
+          <span className="npb-custom-tag">Custom canvas</span>
+          <button type="button" onClick={() => onAddCanvasElement(sid, "text")}>
+            <TypeIcon size={13} /> Add text
+          </button>
+          <button type="button" onClick={() => onAddCanvasElement(sid, "image")}>
+            <ImageIcon size={13} /> Add image
+          </button>
+        </div>
+      )}
+      <div className="npb-custom-canvas">
+        {section.order.map((eid) => {
+          const item = section.items[eid];
+          if (!item) return null;
+          const path = `${base}.${eid}.value`;
+          return (
+            <div key={eid} className="npb-custom-el">
+              {item.type === "image" ? (
+                <EditableImage path={path} content={content} editable={editable} block alt="" {...editorProps} />
+              ) : (
+                <EditableText path={path} content={content} editable={editable} onChange={onChange} as="div" {...editorProps} />
+              )}
+              {editable && (
+                <button
+                  type="button"
+                  className="npb-custom-del"
+                  title="Delete element"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => onRemoveCanvasElement(sid, eid)}
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        {editable && section.order.length === 0 && (
+          <p className="npb-custom-empty">Empty canvas — use “Add text” or “Add image” above, then drag elements into place.</p>
+        )}
+      </div>
+    </section>
   );
 }
 

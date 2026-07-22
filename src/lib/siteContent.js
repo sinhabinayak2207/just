@@ -18,7 +18,12 @@ const media = (file) => `https://niravpatel.ca/_assets/media/${file}`;
 export const DEFAULT_CONTENT = {
   design: {
     elements: {},
+    sections: {},
   },
+  layout: {
+    order: [...DEFAULT_ORDER],
+  },
+  customSections: {},
   nav: {
     brandName: "Nirav Patel",
     brandRole: "Realtor",
@@ -258,7 +263,10 @@ export function listContentFields(content = DEFAULT_CONTENT) {
 }
 
 function walk(value, path, fields) {
+  // Editor-only structures are not path-editable text fields.
   if (path === "design" || path.startsWith("design.")) return;
+  if (path === "layout" || path.startsWith("layout.")) return;
+  if (path === "customSections" || path.startsWith("customSections.")) return;
 
   if (typeof value === "string") {
     fields.push({ path, type: isAssetPath(path, value) ? "asset" : "text", value });
@@ -400,4 +408,191 @@ async function readError(response) {
   } catch {
     return "";
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Dynamic section order + custom canvas sections + per-section backgrounds.
+   All of this persists inside the same path-based content model:
+     content.layout.order    → array of section ids (built-in id or "custom-xxx")
+     content.customSections  → { "custom-xxx": { height, order:[eid], items:{eid:{type,value}} } }
+     content.design.sections → { "<sid>": { bg, gradFrom, gradTo, gradAngle, bgImage, bgFit, bgPos, overlay, overlayColor } }
+   ──────────────────────────────────────────────────────────────────────────── */
+
+export const BUILTIN_SECTION_IDS = [...DEFAULT_ORDER];
+
+export function sectionLabel(id) {
+  if (isCustomSectionId(id)) return "Custom canvas";
+  return SECTION_LABELS[id] || id;
+}
+
+let _seq = 0;
+export function newId(prefix = "id") {
+  _seq += 1;
+  return `${prefix}-${Date.now().toString(36)}-${_seq.toString(36)}`;
+}
+
+export function isCustomSectionId(id) {
+  return typeof id === "string" && id.startsWith("custom-");
+}
+
+export function getSectionOrder(content) {
+  const order = content?.layout?.order;
+  if (Array.isArray(order) && order.length) {
+    return order.filter((id) => typeof id === "string");
+  }
+  return [...DEFAULT_ORDER];
+}
+
+function writeSectionOrder(content, order) {
+  const next = deepClone(content);
+  if (!next.layout) next.layout = {};
+  next.layout.order = order;
+  return next;
+}
+
+export function moveSection(content, id, direction) {
+  const order = getSectionOrder(content);
+  const index = order.indexOf(id);
+  if (index === -1) return content;
+  const target = index + (direction === "up" ? -1 : 1);
+  if (target < 0 || target >= order.length) return content;
+  const next = [...order];
+  const [moved] = next.splice(index, 1);
+  next.splice(target, 0, moved);
+  return writeSectionOrder(content, next);
+}
+
+export function removeSection(content, id) {
+  const order = getSectionOrder(content).filter((sid) => sid !== id);
+  let next = writeSectionOrder(content, order);
+  // Clean any custom section body + per-section + per-element overrides it owned.
+  if (isCustomSectionId(id)) {
+    if (next.customSections) delete next.customSections[id];
+    if (next.design?.elements) {
+      const prefix = encodeElementPath(`customSections.${id}.`);
+      for (const key of Object.keys(next.design.elements)) {
+        if (key.startsWith(prefix)) delete next.design.elements[key];
+      }
+    }
+  }
+  if (next.design?.sections) delete next.design.sections[id];
+  return next;
+}
+
+export function addBuiltinSection(content, id) {
+  const order = getSectionOrder(content);
+  if (order.includes(id)) return content;
+  return writeSectionOrder(content, [...order, id]);
+}
+
+export function addCustomSection(content) {
+  const id = newId("custom");
+  const next = deepClone(content);
+  if (!next.customSections) next.customSections = {};
+  next.customSections[id] = { height: 480, order: [], items: {} };
+  const withOrder = writeSectionOrderInPlace(next, [...getSectionOrder(next), id]);
+  return { content: withOrder, id };
+}
+
+function writeSectionOrderInPlace(next, order) {
+  if (!next.layout) next.layout = {};
+  next.layout.order = order;
+  return next;
+}
+
+export function getCustomSection(content, id) {
+  const section = content?.customSections?.[id];
+  if (!section) return { height: 480, order: [], items: {} };
+  return {
+    height: Number(section.height) || 480,
+    order: Array.isArray(section.order) ? section.order : [],
+    items: section.items || {},
+  };
+}
+
+export function setCustomSectionMeta(content, id, patch) {
+  const next = deepClone(content);
+  if (!next.customSections) next.customSections = {};
+  if (!next.customSections[id]) next.customSections[id] = { height: 480, order: [], items: {} };
+  next.customSections[id] = { ...next.customSections[id], ...patch };
+  return next;
+}
+
+export function addCanvasElement(content, sectionId, type = "text") {
+  const eid = newId("el");
+  const next = deepClone(content);
+  if (!next.customSections) next.customSections = {};
+  if (!next.customSections[sectionId]) next.customSections[sectionId] = { height: 480, order: [], items: {} };
+  const section = next.customSections[sectionId];
+  if (!section.items) section.items = {};
+  if (!Array.isArray(section.order)) section.order = [];
+  section.items[eid] =
+    type === "image"
+      ? { type: "image", value: media("def10c275a38472b55e20fa60a3998ac.png") }
+      : { type: "text", value: "New text" };
+  section.order = [...section.order, eid];
+  // Seed a starting position so fresh elements don't all stack at 0,0.
+  const offset = (section.order.length - 1) * 26;
+  const seed = type === "image" ? { x: 40 + offset, y: 40 + offset, w: 260, h: 180 } : { x: 40 + offset, y: 40 + offset };
+  const withOverride = setElementOverride(next, `customSections.${sectionId}.items.${eid}.value`, seed);
+  return { content: withOverride, elementId: eid };
+}
+
+export function removeCanvasElement(content, sectionId, elementId) {
+  let next = deepClone(content);
+  const section = next.customSections?.[sectionId];
+  if (section) {
+    if (section.items) delete section.items[elementId];
+    if (Array.isArray(section.order)) section.order = section.order.filter((id) => id !== elementId);
+  }
+  next = clearElementOverride(next, `customSections.${sectionId}.items.${elementId}.value`);
+  return next;
+}
+
+/* ── per-section background overrides ─────────────────────────────────────── */
+
+export function getSectionOverride(content, sectionId) {
+  return content?.design?.sections?.[sectionId] || {};
+}
+
+export function setSectionOverride(content, sectionId, patch) {
+  const next = deepClone(content);
+  if (!next.design) next.design = {};
+  if (!next.design.sections) next.design.sections = {};
+  const previous = next.design.sections[sectionId] || {};
+  next.design.sections[sectionId] = cleanOverride({ ...previous, ...patch });
+  return next;
+}
+
+export function clearSectionOverride(content, sectionId) {
+  const next = deepClone(content);
+  if (next.design?.sections) delete next.design.sections[sectionId];
+  return next;
+}
+
+// Returns { hasBg, layerStyle, overlayStyle } describing the section background.
+export function buildSectionBackground(content, sectionId) {
+  const o = getSectionOverride(content, sectionId);
+  const layerStyle = {};
+  let hasBg = false;
+
+  if (o.bgImage) {
+    layerStyle.backgroundImage = `url("${o.bgImage}")`;
+    layerStyle.backgroundSize = o.bgFit === "contain" ? "contain" : "cover";
+    layerStyle.backgroundPosition = o.bgPos || "center";
+    layerStyle.backgroundRepeat = "no-repeat";
+    hasBg = true;
+  } else if (o.gradFrom && o.gradTo) {
+    layerStyle.backgroundImage = `linear-gradient(${Number(o.gradAngle) || 135}deg, ${o.gradFrom}, ${o.gradTo})`;
+    hasBg = true;
+  } else if (o.bg) {
+    layerStyle.background = o.bg;
+    hasBg = true;
+  }
+
+  const overlay = Number(o.overlay) || 0;
+  const overlayStyle =
+    overlay > 0 ? { background: o.overlayColor || "#000000", opacity: overlay } : null;
+
+  return { hasBg: hasBg || !!overlayStyle, hasImage: !!o.bgImage, layerStyle, overlayStyle };
 }
